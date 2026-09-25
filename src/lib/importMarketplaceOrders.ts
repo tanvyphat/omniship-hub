@@ -147,7 +147,11 @@ function isTikTokDescriptionRow(orderCode: string, status: string) {
   return normalizedOrder.includes('platform unique order id') || normalizedStatus.includes('current order status');
 }
 
-export async function importMarketplaceOrders(file: File, expectedPlatform: Platform): Promise<MarketplaceImportResult> {
+export async function importMarketplaceOrders(file: File, expectedPlatform: Platform | null): Promise<MarketplaceImportResult> {
+  if (!expectedPlatform) {
+    throw new Error('Chưa xác định nền tảng của phiếu. Vui lòng chọn Shopee hoặc TikTok Shop trước khi nhập file.');
+  }
+
   const workbook = new ExcelJS.Workbook();
   const buffer = await file.arrayBuffer();
   await workbook.xlsx.load(buffer);
