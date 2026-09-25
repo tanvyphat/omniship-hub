@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { ArrowLeft, Download, Plus, Save, CheckCircle2, Trash2, AlertCircle } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { ArrowLeft, Download, Plus, Save, CheckCircle2, Trash2, AlertCircle, FileUp } from 'lucide-react';
 import { Navigate, useNavigate, useSearchParams, useParams } from 'react-router-dom';
 import { Button } from '../components/Button';
 import { Select } from '../components/Select';
@@ -8,6 +8,8 @@ import { ProductRow } from '../components/ProductRow';
 import { fetchDocument, createDocument, getDocumentSaveErrorMessage, updateDocument } from '../features/documents/document.service';
 import { validateDocument } from '../features/documents/document.validation';
 import { exportDocumentExcel } from '../lib/excel';
+import { importMarketplaceOrders } from '../lib/importMarketplaceOrders';
+import type { MarketplaceImportResult } from '../lib/importMarketplaceOrders';
 import { formatDateVN, getTodayISO } from '../lib/date';
 import type { DocumentInput, DocumentItemInput, DocumentType, Platform } from '../types/document';
 
@@ -16,6 +18,14 @@ const emptyItem = (): DocumentItemInput => ({ orderCode: '', productName: '', sk
 interface Props {
   type?: DocumentType;
   edit?: boolean;
+}
+
+interface ImportSummary extends MarketplaceImportResult {
+  fileName: string;
+}
+
+function hasItemData(item: DocumentItemInput) {
+  return Boolean(item.orderCode.trim() || item.productName.trim() || item.sku.trim() || item.variant.trim() || item.unit.trim());
 }
 
 export function CreateDocumentPage({ type: createType, edit = false }: Props) {
@@ -33,8 +43,11 @@ export function CreateDocumentPage({ type: createType, edit = false }: Props) {
   const [loadingDocument, setLoadingDocument] = useState(edit);
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importSummary, setImportSummary] = useState<ImportSummary | null>(null);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
+  const importFileRef = useRef<HTMLInputElement>(null);
 
   // State quản lý hiển thị pop-up
   const [showConfirmReset, setShowConfirmReset] = useState(false);
@@ -54,6 +67,7 @@ export function CreateDocumentPage({ type: createType, edit = false }: Props) {
             return `${year}-${month}-${day}`;
           })() : document.documentDate);
           setItems(document.items.length > 0 ? document.items : [emptyItem()]);
+          setImportSummary(null);
           setSaved(false);
         })
         .catch((err: unknown) => {
@@ -91,13 +105,19 @@ export function CreateDocumentPage({ type: createType, edit = false }: Props) {
 
   function updateItem(index: number, item: DocumentItemInput) {
     setItems((current) => current.map((row, i) => i === index ? item : row));
+    setImportSummary(null);
     setSaved(false); setError('');
   }
   function removeItem(index: number) {
     setItems((current) => current.filter((_, i) => i !== index));
+    setImportSummary(null);
     setSaved(false); setError('');
   }
-  function addItem() { setItems((current) => [...current, emptyItem()]); setSaved(false); setError(''); }
+  function addItem() {
+    setItems((current) => [...current, emptyItem()]);
+    setImportSummary(null);
+    setSaved(false); setError('');
+  }
 
   function handleResetForm() {
     setShowConfirmReset(true);
@@ -106,9 +126,35 @@ export function CreateDocumentPage({ type: createType, edit = false }: Props) {
   function confirmReset() {
     setItems([emptyItem()]);
     setDocumentDate(getTodayISO());
+    setImportSummary(null);
     setSaved(false);
     setError('');
     setShowConfirmReset(false);
+  }
+
+  async function handleImportFile(file: File) {
+    if (documentType !== 'outbound') return;
+
+    const hasExistingData = items.some(hasItemData);
+    if (hasExistingData) {
+      const shouldReplace = window.confirm('Nhập file sẽ thay thế danh sách sản phẩm đang có trên phiếu. Sếp có muốn tiếp tục không?');
+      if (!shouldReplace) return;
+    }
+
+    setImporting(true);
+    setError('');
+    setImportSummary(null);
+    setSaved(false);
+
+    try {
+      const result = await importMarketplaceOrders(file, platform);
+      setItems(result.items);
+      setImportSummary({ ...result, fileName: file.name });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Không thể đọc file Excel. Vui lòng kiểm tra lại file và thử lại.');
+    } finally {
+      setImporting(false);
+    }
   }
 
   async function save() {
@@ -153,8 +199,8 @@ export function CreateDocumentPage({ type: createType, edit = false }: Props) {
         />
         <section className="rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className={`grid gap-5 border-b border-slate-100 p-5 md:p-6 ${editId ? 'md:grid-cols-4' : 'md:grid-cols-2'}`}>
-            {editId && <Select label="Loại phiếu" value={documentType} onChange={(e) => { const next = e.target.value as DocumentType; setDocumentType(next); setSaved(false); setError(''); }} options={[{ value: 'outbound', label: 'Phiếu xuất hàng' }, { value: 'return', label: 'Phiếu hoàn hàng' }]} />}
-            {editId && <Select label="Nền tảng" value={platform} onChange={(e) => { setPlatform(e.target.value as Platform); setSaved(false); setError(''); }} options={[{ value: 'tiktok', label: 'TikTok Shop' }, { value: 'shopee', label: 'Shopee' }]} />}
+            {editId && <Select label="Loại phiếu" value={documentType} onChange={(e) => { const next = e.target.value as DocumentType; setDocumentType(next); setImportSummary(null); setSaved(false); setError(''); }} options={[{ value: 'outbound', label: 'Phiếu xuất hàng' }, { value: 'return', label: 'Phiếu hoàn hàng' }]} />}
+            {editId && <Select label="Nền tảng" value={platform} onChange={(e) => { setPlatform(e.target.value as Platform); setImportSummary(null); setSaved(false); setError(''); }} options={[{ value: 'tiktok', label: 'TikTok Shop' }, { value: 'shopee', label: 'Shopee' }]} />}
             <label className="grid gap-1.5 text-sm font-medium text-slate-700">
               Ngày {documentType === 'outbound' ? 'xuất kho' : 'hoàn hàng'}
               <input className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-50" type="date" value={documentDate} onChange={(e) => { setDocumentDate(e.target.value); setSaved(false); }} />
@@ -165,10 +211,48 @@ export function CreateDocumentPage({ type: createType, edit = false }: Props) {
             </div>
           </div>
           <div className="p-5 md:p-6">
-            <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div><h2 className="font-bold text-slate-950">Danh sách sản phẩm</h2><p className="mt-1 text-xs text-slate-500">Bắt buộc mỗi dòng: mã đơn, tên, SKU, dung tích/khối lượng và số lượng. Một mã đơn có thể có nhiều sản phẩm.</p></div>
-              <div className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">{items.length} dòng · {totalQuantity} sản phẩm</div>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                {documentType === 'outbound' && (
+                    <>
+                      <input
+                          ref={importFileRef}
+                          type="file"
+                          accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                          className="hidden"
+                          onChange={(event) => {
+                            const file = event.target.files?.[0];
+                            event.target.value = '';
+                            if (file) void handleImportFile(file);
+                          }}
+                      />
+                      <Button variant="secondary" onClick={() => importFileRef.current?.click()} loading={importing} disabled={saving || exporting}>
+                        <FileUp className="h-4 w-4" />
+                        {importing ? 'Đang đọc file…' : `Nhập Excel ${platform === 'tiktok' ? 'TikTok' : 'Shopee'}`}
+                      </Button>
+                    </>
+                )}
+                <div className="rounded-full bg-slate-100 px-3 py-1 text-center text-xs font-semibold text-slate-600">{items.length} dòng · {totalQuantity} sản phẩm</div>
+              </div>
             </div>
+
+            {importSummary && (
+                <div className="mb-4 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                  <div className="flex items-start gap-2">
+                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+                    <div>
+                      <div className="font-semibold">Đã đọc {importSummary.fileName} và điền {importSummary.items.length} dòng hợp lệ vào phiếu.</div>
+                      <div className="mt-1 text-xs leading-5 text-emerald-700">
+                        Đã kiểm tra {importSummary.totalRows} dòng đơn hàng. Đã loại {importSummary.cancelledRows} dòng thuộc {importSummary.cancelledOrders} đơn đã huỷ.
+                        {importSummary.skippedRows > 0 ? ` Bỏ qua ${importSummary.skippedRows} dòng thiếu dữ liệu bắt buộc.` : ''}
+                        {' '}Dữ liệu mới chỉ được điền vào form, chưa lưu vào hệ thống cho đến khi Sếp bấm Lưu phiếu.
+                      </div>
+                    </div>
+                  </div>
+                </div>
+            )}
+
             <div className="space-y-3">{items.map((item, index) => <ProductRow key={`${index}-${item.sku}`} index={index} item={item} onChange={(next) => updateItem(index, next)} onRemove={() => removeItem(index)} canRemove={items.length > 1} showVariant />)}</div>
             <button type="button" onClick={addItem} className="mt-4 inline-flex items-center gap-2 rounded-xl border border-dashed border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-600 hover:border-blue-300 hover:bg-blue-50 hover:text-blue-700"><Plus className="h-4 w-4" />Thêm sản phẩm</button>
           </div>
@@ -179,7 +263,7 @@ export function CreateDocumentPage({ type: createType, edit = false }: Props) {
             <button
                 type="button"
                 onClick={handleResetForm}
-                disabled={saving || exporting}
+                disabled={saving || exporting || importing}
                 className="inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-rose-600 transition-colors hover:bg-rose-50 disabled:opacity-50"
             >
               <Trash2 className="h-4 w-4"/>
@@ -189,9 +273,9 @@ export function CreateDocumentPage({ type: createType, edit = false }: Props) {
             {/* Tổ hợp nút Xuất Excel & Lưu */}
             <div className="flex flex-col gap-3 sm:flex-row">
               <Button variant="secondary" onClick={() => void exportExcel()} loading={exporting}
-                      disabled={Boolean(validateDocument(input)) || saving}><Download className="h-4 w-4"/>Xuất
+                      disabled={Boolean(validateDocument(input)) || saving || importing}><Download className="h-4 w-4"/>Xuất
                 Excel</Button>
-              <Button onClick={() => void save()} loading={saving} disabled={exporting || saved}><Save
+              <Button onClick={() => void save()} loading={saving} disabled={exporting || importing || saved}><Save
                   className="h-4 w-4"/>{saved ? 'Đã lưu' : editId ? 'Lưu thay đổi' : 'Lưu phiếu'}</Button>
             </div>
           </div>
