@@ -1,5 +1,20 @@
 -- OmniShip Hub - Feature Control migration
--- Run this once in Supabase SQL Editor if the main schema was already installed.
+-- Safe to run more than once. This script does not delete warehouse data.
+
+-- Some older OmniHub databases may not have public.is_admin() yet.
+-- Recreate the helper here so this migration can run independently.
+create or replace function public.is_admin()
+returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select coalesce(auth.jwt() ->> 'email', '') = 'admin@gmail.com';
+$$;
+
+revoke all on function public.is_admin() from public;
+grant execute on function public.is_admin() to authenticated;
 
 create table if not exists public.feature_flags (
   feature_key text primary key check (feature_key in ('outbound', 'returns', 'history')),
