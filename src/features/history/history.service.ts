@@ -8,9 +8,9 @@ export interface HistoryFilters {
   page: number;
   pageSize: number;
   platform: Platform;
+  allowedTypes?: DocumentType[];
 }
 
-// Định nghĩa interface cục bộ để map dữ liệu trả về từ Supabase
 interface HistoryDocumentRow {
   id: string;
   platform: Platform;
@@ -28,6 +28,10 @@ interface HistoryItemRow {
 export async function fetchHistory(filters: HistoryFilters) {
   const from = filters.from || null;
   const to = filters.to || null;
+  const allowedTypes = filters.allowedTypes ?? ['outbound', 'return'];
+
+  if (allowedTypes.length === 0) return { rows: [], count: 0 };
+  if (filters.type !== 'all' && !allowedTypes.includes(filters.type)) return { rows: [], count: 0 };
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   let query = (supabase as any)
@@ -38,7 +42,14 @@ export async function fetchHistory(filters: HistoryFilters) {
       .order('type', { ascending: true })
       .order('created_at', { ascending: false });
 
-  if (filters.type !== 'all') query = query.eq('type', filters.type);
+  if (filters.type !== 'all') {
+    query = query.eq('type', filters.type);
+  } else if (allowedTypes.length === 1) {
+    query = query.eq('type', allowedTypes[0]);
+  } else {
+    query = query.in('type', allowedTypes);
+  }
+
   if (from) query = query.gte('document_date', from);
   if (to) query = query.lte('document_date', to);
 
@@ -48,7 +59,6 @@ export async function fetchHistory(filters: HistoryFilters) {
   const { data: rawDocuments, error: documentError, count } = await query.range(fromIndex, toIndex);
   if (documentError) throw documentError;
 
-  // Ép dữ liệu trả về sang interface cục bộ để đảm bảo Type Safety
   const documents = (rawDocuments ?? []) as HistoryDocumentRow[];
   const ids = documents.map((document) => document.id);
 
