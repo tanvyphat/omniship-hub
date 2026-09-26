@@ -201,7 +201,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
       )}
 
       <aside
-        className={`fixed inset-y-0 left-0 z-40 w-64 overflow-hidden border-r border-white/10 bg-slate-950 text-white shadow-2xl transition-transform duration-300 md:static md:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-40 flex h-screen w-64 flex-col overflow-hidden border-r border-white/10 bg-slate-950 text-white shadow-2xl transition-transform duration-300 md:translate-x-0 ${
           open ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
@@ -211,7 +211,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
           <div className="absolute -bottom-16 left-10 h-44 w-44 animate-pulse rounded-full bg-cyan-400/10 blur-3xl [animation-delay:1400ms]" />
         </div>
 
-        <div className="relative flex h-16 items-center justify-between border-b border-white/10 px-5">
+        <div className="relative flex h-16 shrink-0 items-center justify-between border-b border-white/10 px-5">
           <div>
             <div className="bg-gradient-to-r from-white via-cyan-200 to-fuchsia-300 bg-clip-text text-base font-extrabold tracking-wide text-transparent">
               OMNISHIP HUB
@@ -227,7 +227,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
           </button>
         </div>
 
-        <nav className="relative space-y-1 p-3">
+        <nav className="relative min-h-0 flex-1 space-y-1 overflow-y-auto p-3 pb-4 [scrollbar-color:rgba(148,163,184,0.25)_transparent] [scrollbar-width:thin]">
           <NavLink
             end
             to="/"
@@ -287,7 +287,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
           )}
         </nav>
 
-        <div className="absolute bottom-0 left-0 right-0 border-t border-white/10 bg-slate-950/75 p-4 text-xs backdrop-blur-xl">
+        <div className="relative mt-auto shrink-0 border-t border-white/10 bg-slate-950/75 p-4 text-xs backdrop-blur-xl">
           <div className="rounded-xl border border-white/[0.07] bg-white/[0.035] p-3 shadow-lg shadow-black/10">
             <div className="flex items-center justify-between gap-2">
               <div className={`flex items-center gap-2 font-semibold ${statusConfig.text}`}>
