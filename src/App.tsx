@@ -1,6 +1,9 @@
+import type { ReactNode } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { AppShell } from './features/layout/AppShell';
+import { useFeatureFlags } from './features/featureFlags/useFeatureFlags';
+import type { FeatureKey } from './features/featureFlags/useFeatureFlags';
 import { DashboardPage } from './pages/DashboardPage';
 import { CreateDocumentPage } from './pages/CreateDocumentPage';
 import { HistoryPage } from './pages/HistoryPage';
@@ -14,6 +17,21 @@ function CreateDocumentRoute({ type }: { type: DocumentType }) {
   return <CreateDocumentPage key={`${type}:${location.search}`} type={type} />;
 }
 
+function FeatureRoute({ feature, children }: { feature: FeatureKey; children: ReactNode }) {
+  const { features, loading } = useFeatureFlags();
+
+  if (loading) {
+    return (
+      <div className="grid min-h-[240px] place-items-center rounded-[24px] border border-slate-200 bg-white/80 text-sm font-semibold text-slate-500 shadow-sm">
+        Đang đồng bộ quyền truy cập tính năng…
+      </div>
+    );
+  }
+
+  if (!features[feature]) return <Navigate to="/" replace />;
+  return children;
+}
+
 export default function App() {
   return (
     <Routes>
@@ -21,12 +39,12 @@ export default function App() {
       <Route element={<ProtectedRoute />}>
         <Route element={<AppShell />}>
           <Route path="/" element={<DashboardPage />} />
-          <Route path="/warehouse/outbound/platform" element={<PlatformPage type="outbound" />} />
-          <Route path="/warehouse/outbound/create" element={<CreateDocumentRoute type="outbound" />} />
-          <Route path="/warehouse/history/:platform/:id/edit" element={<CreateDocumentPage edit />} />
-          <Route path="/warehouse/returns/platform" element={<PlatformPage type="return" />} />
-          <Route path="/warehouse/returns/create" element={<CreateDocumentRoute type="return" />} />
-          <Route path="/warehouse/history/:platform" element={<HistoryPage />} />
+          <Route path="/warehouse/outbound/platform" element={<FeatureRoute feature="outbound"><PlatformPage type="outbound" /></FeatureRoute>} />
+          <Route path="/warehouse/outbound/create" element={<FeatureRoute feature="outbound"><CreateDocumentRoute type="outbound" /></FeatureRoute>} />
+          <Route path="/warehouse/history/:platform/:id/edit" element={<FeatureRoute feature="history"><CreateDocumentPage edit /></FeatureRoute>} />
+          <Route path="/warehouse/returns/platform" element={<FeatureRoute feature="returns"><PlatformPage type="return" /></FeatureRoute>} />
+          <Route path="/warehouse/returns/create" element={<FeatureRoute feature="returns"><CreateDocumentRoute type="return" /></FeatureRoute>} />
+          <Route path="/warehouse/history/:platform" element={<FeatureRoute feature="history"><HistoryPage /></FeatureRoute>} />
           <Route path="/warehouse" element={<Navigate to="/" replace />} />
         </Route>
       </Route>
