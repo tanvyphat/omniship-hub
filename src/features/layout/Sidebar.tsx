@@ -1,21 +1,25 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ChevronDown,
   History,
   LayoutDashboard,
   PackageCheck,
+  RefreshCw,
   RotateCcw,
   ShoppingBag,
   Store,
   X,
 } from 'lucide-react';
 import { NavLink, useLocation } from 'react-router-dom';
+import { supabase } from '../../lib/supabase';
 
 interface DropdownItem {
   to: string;
   label: string;
   platform: 'shopee' | 'tiktok';
 }
+
+type SystemStatus = 'checking' | 'online' | 'degraded' | 'offline';
 
 interface DropdownGroupProps {
   label: string;
@@ -89,12 +93,94 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
   const [outboundOpen, setOutboundOpen] = useState(location.pathname.startsWith('/warehouse/outbound'));
   const [returnsOpen, setReturnsOpen] = useState(location.pathname.startsWith('/warehouse/returns'));
   const [historyOpen, setHistoryOpen] = useState(location.pathname.startsWith('/warehouse/history'));
+  const [systemStatus, setSystemStatus] = useState<SystemStatus>('checking');
+  const [lastChecked, setLastChecked] = useState<Date | null>(null);
+  const [latencyMs, setLatencyMs] = useState<number | null>(null);
 
   useEffect(() => {
     if (location.pathname.startsWith('/warehouse/outbound')) setOutboundOpen(true);
     if (location.pathname.startsWith('/warehouse/returns')) setReturnsOpen(true);
     if (location.pathname.startsWith('/warehouse/history')) setHistoryOpen(true);
   }, [location.pathname]);
+
+  const checkSystemHealth = useCallback(async () => {
+    if (!navigator.onLine) {
+      setSystemStatus('offline');
+      setLatencyMs(null);
+      setLastChecked(new Date());
+      return;
+    }
+
+    setSystemStatus('checking');
+    const startedAt = performance.now();
+
+    try {
+      const healthRequest = (supabase as any)
+        .from('warehouse_documents')
+        .select('id')
+        .limit(1);
+
+      const timeout = new Promise<never>((_, reject) => {
+        window.setTimeout(() => reject(new Error('Supabase health check timeout')), 6000);
+      });
+
+      const result = await Promise.race([healthRequest, timeout]);
+      const elapsed = Math.round(performance.now() - startedAt);
+
+      if (result.error) throw result.error;
+
+      setLatencyMs(elapsed);
+      setSystemStatus(elapsed > 1500 ? 'degraded' : 'online');
+    } catch (error) {
+      console.warn('[System Health] Supabase check failed', error);
+      setLatencyMs(null);
+      setSystemStatus('offline');
+    } finally {
+      setLastChecked(new Date());
+    }
+  }, []);
+
+  useEffect(() => {
+    void checkSystemHealth();
+    const interval = window.setInterval(() => void checkSystemHealth(), 30000);
+    const handleConnectionChange = () => void checkSystemHealth();
+
+    window.addEventListener('online', handleConnectionChange);
+    window.addEventListener('offline', handleConnectionChange);
+
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener('online', handleConnectionChange);
+      window.removeEventListener('offline', handleConnectionChange);
+    };
+  }, [checkSystemHealth]);
+
+  const statusConfig = {
+    checking: {
+      label: 'Checking System',
+      detail: 'Đang kiểm tra Supabase…',
+      text: 'text-sky-300',
+      dot: 'bg-sky-400',
+    },
+    online: {
+      label: 'System Online',
+      detail: `Supabase Connected${latencyMs !== null ? ` · ${latencyMs}ms` : ''}`,
+      text: 'text-emerald-300',
+      dot: 'bg-emerald-400',
+    },
+    degraded: {
+      label: 'System Degraded',
+      detail: `Supabase phản hồi chậm${latencyMs !== null ? ` · ${latencyMs}ms` : ''}`,
+      text: 'text-amber-300',
+      dot: 'bg-amber-400',
+    },
+    offline: {
+      label: 'System Offline',
+      detail: navigator.onLine ? 'Không thể kết nối Supabase' : 'Thiết bị đang mất kết nối mạng',
+      text: 'text-rose-300',
+      dot: 'bg-rose-400',
+    },
+  }[systemStatus];
 
   return (
     <>
@@ -188,15 +274,37 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
           />
         </nav>
 
-        <div className="absolute bottom-0 left-0 right-0 border-t border-white/10 bg-slate-950/60 p-4 text-xs leading-5 text-slate-500 backdrop-blur-xl">
-          <div className="mb-1 flex items-center gap-2 font-medium text-emerald-300">
-            <span className="relative flex h-2 w-2">
-              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-              <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
-            </span>
-            System Online
+        <div className="absolute bottom-0 left-0 right-0 border-t border-white/10 bg-slate-950/75 p-4 text-xs backdrop-blur-xl">
+          <div className="rounded-xl border border-white/[0.07] bg-white/[0.035] p-3 shadow-lg shadow-black/10">
+            <div className="flex items-center justify-between gap-2">
+              <div className={`flex items-center gap-2 font-semibold ${statusConfig.text}`}>
+                <span className="relative flex h-2 w-2 shrink-0">
+                  {systemStatus !== 'offline' && (
+                    <span className={`absolute inline-flex h-full w-full animate-ping rounded-full ${statusConfig.dot} opacity-60`} />
+                  )}
+                  <span className={`relative inline-flex h-2 w-2 rounded-full ${statusConfig.dot}`} />
+                </span>
+                {statusConfig.label}
+              </div>
+              <button
+                type="button"
+                onClick={() => void checkSystemHealth()}
+                disabled={systemStatus === 'checking'}
+                title="Kiểm tra lại trạng thái hệ thống"
+                aria-label="Kiểm tra lại trạng thái hệ thống"
+                className="grid h-7 w-7 cursor-pointer place-items-center rounded-lg text-slate-500 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${systemStatus === 'checking' ? 'animate-spin' : 'transition-transform duration-300 hover:rotate-180'}`} />
+              </button>
+            </div>
+            <div className="mt-1.5 text-[11px] leading-4 text-slate-400">{statusConfig.detail}</div>
+            <div className="mt-1 text-[10px] text-slate-600">
+              {lastChecked
+                ? `Kiểm tra lúc ${lastChecked.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`
+                : 'Chưa có dữ liệu kiểm tra'}
+            </div>
           </div>
-          Dữ liệu được lưu an toàn bằng Supabase RLS.
+          <div className="mt-2 px-1 text-[10px] leading-4 text-slate-600">Tự động kiểm tra mỗi 30 giây · Supabase RLS</div>
         </div>
       </aside>
     </>
