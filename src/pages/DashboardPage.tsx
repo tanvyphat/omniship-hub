@@ -3,8 +3,6 @@ import {
   ClipboardList,
   PackageCheck,
   RotateCcw,
-  ShoppingBag,
-  Store,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -89,8 +87,8 @@ export function DashboardPage() {
           <div className="group relative overflow-hidden rounded-[24px] border border-orange-100 bg-white p-5 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-orange-100/60 md:p-6">
             <div className="pointer-events-none absolute -right-10 -top-14 h-40 w-40 rounded-full bg-orange-400/10 blur-3xl transition-all duration-500 group-hover:scale-125" />
             <div className="relative flex items-start gap-4">
-              <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-orange-500 text-white shadow-lg shadow-orange-500/20">
-                <ShoppingBag className="h-5 w-5" />
+              <div className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-2xl shadow-lg shadow-orange-500/20 transition-all duration-300 group-hover:scale-110">
+                <img src="/shopee-logo.svg" alt="Shopee" className="h-full w-full object-cover" />
               </div>
               <div className="min-w-0 flex-1">
                 <div className="text-lg font-black text-slate-950">Shopee</div>
@@ -107,8 +105,8 @@ export function DashboardPage() {
           <div className="group relative overflow-hidden rounded-[24px] border border-cyan-100 bg-white p-5 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-cyan-100/60 md:p-6">
             <div className="pointer-events-none absolute -right-10 -top-14 h-40 w-40 rounded-full bg-cyan-400/10 blur-3xl transition-all duration-500 group-hover:scale-125" />
             <div className="relative flex items-start gap-4">
-              <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-slate-950 text-cyan-300 shadow-lg shadow-cyan-500/10">
-                <Store className="h-5 w-5" />
+              <div className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-2xl shadow-lg shadow-cyan-500/10 transition-all duration-300 group-hover:scale-110">
+                <img src="/tiktok-logo.svg" alt="TikTok Shop" className="h-full w-full object-cover" />
               </div>
               <div className="min-w-0 flex-1">
                 <div className="text-lg font-black text-slate-950">TikTok Shop</div>
