@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { supabase } from '../../lib/supabase';
+import { useFeatureFlags } from '../featureFlags/useFeatureFlags';
 
 interface DropdownItem {
   to: string;
@@ -90,6 +91,7 @@ function DropdownGroup({ label, icon: Icon, items, open, onToggle, onNavigate }:
 
 export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void }) {
   const location = useLocation();
+  const { features, loading: featureLoading } = useFeatureFlags();
   const [outboundOpen, setOutboundOpen] = useState(location.pathname.startsWith('/warehouse/outbound'));
   const [returnsOpen, setReturnsOpen] = useState(location.pathname.startsWith('/warehouse/returns'));
   const [historyOpen, setHistoryOpen] = useState(location.pathname.startsWith('/warehouse/history'));
@@ -242,41 +244,47 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
             Tổng quan
           </NavLink>
 
-          <DropdownGroup
-            label="Tạo phiếu xuất"
-            icon={PackageCheck}
-            open={outboundOpen}
-            onToggle={() => setOutboundOpen((value) => !value)}
-            onNavigate={onClose}
-            items={[
-              { to: '/warehouse/outbound/create?platform=shopee', label: 'Shopee', platform: 'shopee' },
-              { to: '/warehouse/outbound/create?platform=tiktok', label: 'TikTok', platform: 'tiktok' },
-            ]}
-          />
+          {!featureLoading && features.outbound && (
+            <DropdownGroup
+              label="Tạo phiếu xuất"
+              icon={PackageCheck}
+              open={outboundOpen}
+              onToggle={() => setOutboundOpen((value) => !value)}
+              onNavigate={onClose}
+              items={[
+                { to: '/warehouse/outbound/create?platform=shopee', label: 'Shopee', platform: 'shopee' },
+                { to: '/warehouse/outbound/create?platform=tiktok', label: 'TikTok', platform: 'tiktok' },
+              ]}
+            />
+          )}
 
-          <DropdownGroup
-            label="Tạo phiếu hoàn"
-            icon={RotateCcw}
-            open={returnsOpen}
-            onToggle={() => setReturnsOpen((value) => !value)}
-            onNavigate={onClose}
-            items={[
-              { to: '/warehouse/returns/create?platform=shopee', label: 'Shopee', platform: 'shopee' },
-              { to: '/warehouse/returns/create?platform=tiktok', label: 'TikTok', platform: 'tiktok' },
-            ]}
-          />
+          {!featureLoading && features.returns && (
+            <DropdownGroup
+              label="Tạo phiếu hoàn"
+              icon={RotateCcw}
+              open={returnsOpen}
+              onToggle={() => setReturnsOpen((value) => !value)}
+              onNavigate={onClose}
+              items={[
+                { to: '/warehouse/returns/create?platform=shopee', label: 'Shopee', platform: 'shopee' },
+                { to: '/warehouse/returns/create?platform=tiktok', label: 'TikTok', platform: 'tiktok' },
+              ]}
+            />
+          )}
 
-          <DropdownGroup
-            label="Lịch sử"
-            icon={History}
-            open={historyOpen}
-            onToggle={() => setHistoryOpen((value) => !value)}
-            onNavigate={onClose}
-            items={[
-              { to: '/warehouse/history/shopee', label: 'Shopee', platform: 'shopee' },
-              { to: '/warehouse/history/tiktok', label: 'TikTok', platform: 'tiktok' },
-            ]}
-          />
+          {!featureLoading && features.history && (
+            <DropdownGroup
+              label="Lịch sử"
+              icon={History}
+              open={historyOpen}
+              onToggle={() => setHistoryOpen((value) => !value)}
+              onNavigate={onClose}
+              items={[
+                { to: '/warehouse/history/shopee', label: 'Shopee', platform: 'shopee' },
+                { to: '/warehouse/history/tiktok', label: 'TikTok', platform: 'tiktok' },
+              ]}
+            />
+          )}
         </nav>
 
         <div className="absolute bottom-0 left-0 right-0 border-t border-white/10 bg-slate-950/75 p-4 text-xs backdrop-blur-xl">
