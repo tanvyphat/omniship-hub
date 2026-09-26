@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ChevronDown,
   History,
@@ -96,6 +96,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
   const [systemStatus, setSystemStatus] = useState<SystemStatus>('checking');
   const [lastChecked, setLastChecked] = useState<Date | null>(null);
   const [latencyMs, setLatencyMs] = useState<number | null>(null);
+  const healthCheckRunning = useRef(false);
 
   useEffect(() => {
     if (location.pathname.startsWith('/warehouse/outbound')) setOutboundOpen(true);
@@ -104,14 +105,17 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
   }, [location.pathname]);
 
   const checkSystemHealth = useCallback(async () => {
+    if (healthCheckRunning.current) return;
+    healthCheckRunning.current = true;
+
     if (!navigator.onLine) {
       setSystemStatus('offline');
       setLatencyMs(null);
       setLastChecked(new Date());
+      healthCheckRunning.current = false;
       return;
     }
 
-    setSystemStatus('checking');
     const startedAt = performance.now();
 
     try {
@@ -137,12 +141,13 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
       setSystemStatus('offline');
     } finally {
       setLastChecked(new Date());
+      healthCheckRunning.current = false;
     }
   }, []);
 
   useEffect(() => {
     void checkSystemHealth();
-    const interval = window.setInterval(() => void checkSystemHealth(), 30000);
+    const interval = window.setInterval(() => void checkSystemHealth(), 1000);
     const handleConnectionChange = () => void checkSystemHealth();
 
     window.addEventListener('online', handleConnectionChange);
@@ -289,12 +294,12 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
               <button
                 type="button"
                 onClick={() => void checkSystemHealth()}
-                disabled={systemStatus === 'checking'}
+                disabled={healthCheckRunning.current}
                 title="Kiểm tra lại trạng thái hệ thống"
                 aria-label="Kiểm tra lại trạng thái hệ thống"
                 className="grid h-7 w-7 cursor-pointer place-items-center rounded-lg text-slate-500 transition hover:bg-white/10 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
               >
-                <RefreshCw className={`h-3.5 w-3.5 ${systemStatus === 'checking' ? 'animate-spin' : 'transition-transform duration-300 hover:rotate-180'}`} />
+                <RefreshCw className={`h-3.5 w-3.5 ${healthCheckRunning.current ? 'animate-spin' : 'transition-transform duration-300 hover:rotate-180'}`} />
               </button>
             </div>
             <div className="mt-1.5 text-[11px] leading-4 text-slate-400">{statusConfig.detail}</div>
@@ -304,7 +309,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
                 : 'Chưa có dữ liệu kiểm tra'}
             </div>
           </div>
-          <div className="mt-2 px-1 text-[10px] leading-4 text-slate-600">Tự động kiểm tra mỗi 30 giây · Supabase RLS</div>
+          <div className="mt-2 px-1 text-[10px] leading-4 text-slate-600">Cập nhật mỗi giây · Supabase RLS</div>
         </div>
       </aside>
     </>
