@@ -164,11 +164,11 @@ export function HistoryPage() {
             />
             <label className="grid gap-1.5 text-sm font-medium text-slate-700">
               Từ ngày
-              <input type="date" className="h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-50" value={fromInput} onChange={(e) => setFromInput(e.target.value)} />
+              <input type="date" className="h-11 cursor-pointer rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-50" value={fromInput} onChange={(e) => setFromInput(e.target.value)} />
             </label>
             <label className="grid gap-1.5 text-sm font-medium text-slate-700">
               Đến ngày
-              <input type="date" className="h-11 rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-50" value={toInput} onChange={(e) => setToInput(e.target.value)} />
+              <input type="date" className="h-11 cursor-pointer rounded-xl border border-slate-200 px-3 text-sm outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-50" value={toInput} onChange={(e) => setToInput(e.target.value)} />
             </label>
             <div className="flex items-end gap-2"><Button onClick={applyFilters}>Áp dụng</Button><Button variant="secondary" onClick={clearFilters}>Xóa lọc</Button></div>
           </div>
@@ -206,7 +206,7 @@ export function HistoryPage() {
                   <td className="px-5 py-3 text-right font-bold text-slate-900">{row.totalQuantity}</td>
                   <td className="px-5 py-3">
                     <div className="flex justify-end gap-2">
-                      <Button variant="secondary" className="h-9 px-3" title="Chỉnh sửa phiếu" onClick={() => navigate(`/warehouse/history/${platform}/${row.id}/edit`)}><Edit3 className="h-4 w-4" /><span className="hidden lg:inline">Sửa</span></Button>
+                      <Button variant="secondary" className="h-9 px-3" title="Chỉnh sửa phiếu" onClick={() => navigate(`/warehouse/history/${platform}/${row.id}/edit?type=${row.type}`)}><Edit3 className="h-4 w-4" /><span className="hidden lg:inline">Sửa</span></Button>
                       <Button variant="secondary" className="h-9 px-3" title="Xuất lại file Excel" loading={exportingId === row.id} disabled={exportingId !== null || loading} onClick={() => void exportSavedDocument(row.id)}><Download className="h-4 w-4" /><span className="hidden lg:inline">Xuất Excel</span></Button>
                     </div>
                   </td>
