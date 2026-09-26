@@ -32,6 +32,22 @@ function FeatureRoute({ feature, children }: { feature: FeatureKey; children: Re
   return children;
 }
 
+function EditDocumentRoute() {
+  const location = useLocation();
+  const type = new URLSearchParams(location.search).get('type');
+  const documentFeature: FeatureKey | null = type === 'outbound' ? 'outbound' : type === 'return' ? 'returns' : null;
+
+  if (!documentFeature) return <Navigate to="/" replace />;
+
+  return (
+    <FeatureRoute feature="history">
+      <FeatureRoute feature={documentFeature}>
+        <CreateDocumentPage edit />
+      </FeatureRoute>
+    </FeatureRoute>
+  );
+}
+
 export default function App() {
   return (
     <Routes>
@@ -41,7 +57,7 @@ export default function App() {
           <Route path="/" element={<DashboardPage />} />
           <Route path="/warehouse/outbound/platform" element={<FeatureRoute feature="outbound"><PlatformPage type="outbound" /></FeatureRoute>} />
           <Route path="/warehouse/outbound/create" element={<FeatureRoute feature="outbound"><CreateDocumentRoute type="outbound" /></FeatureRoute>} />
-          <Route path="/warehouse/history/:platform/:id/edit" element={<FeatureRoute feature="history"><CreateDocumentPage edit /></FeatureRoute>} />
+          <Route path="/warehouse/history/:platform/:id/edit" element={<EditDocumentRoute />} />
           <Route path="/warehouse/returns/platform" element={<FeatureRoute feature="returns"><PlatformPage type="return" /></FeatureRoute>} />
           <Route path="/warehouse/returns/create" element={<FeatureRoute feature="returns"><CreateDocumentRoute type="return" /></FeatureRoute>} />
           <Route path="/warehouse/history/:platform" element={<FeatureRoute feature="history"><HistoryPage /></FeatureRoute>} />
