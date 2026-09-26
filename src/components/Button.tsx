@@ -11,7 +11,7 @@ interface Props extends ButtonHTMLAttributes<HTMLButtonElement> {
 export function Button({ children, loading = false, variant = 'primary', className, disabled, ...props }: Props) {
   const styles = {
     primary:
-      'relative overflow-hidden bg-gradient-to-r from-blue-600 via-violet-600 to-fuchsia-600 bg-[length:200%_100%] text-white shadow-lg shadow-violet-500/20 hover:bg-right hover:shadow-xl hover:shadow-fuchsia-500/25',
+      'omni-gradient-motion relative overflow-hidden bg-gradient-to-r from-blue-600 via-violet-600 to-fuchsia-600 text-white shadow-lg shadow-violet-500/20 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-fuchsia-500/25',
     secondary:
       'border border-slate-200 bg-white/90 text-slate-700 shadow-sm hover:-translate-y-0.5 hover:border-violet-200 hover:bg-white hover:text-violet-700 hover:shadow-md',
     ghost:
