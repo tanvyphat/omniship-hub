@@ -44,8 +44,10 @@ export async function fetchSettlementReport(platform: Platform, items: DocumentI
   if (!orderCodes.length) return [];
   const [priceResult, payoutResult] = await Promise.all([
     skus.length
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       ? (supabase as any).from('marketplace_product_prices').select('platform, sku, product_name, sale_price, minimum_payout, cost_price').eq('platform', platform).in('sku', skus)
       : Promise.resolve({ data: [], error: null }),
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     (supabase as any).from('marketplace_order_settlements').select('platform, order_code, payout_amount, payout_kind, source_file').eq('platform', platform).in('order_code', orderCodes),
   ]);
   if (priceResult.error) throw priceResult.error;
@@ -113,6 +115,7 @@ export async function fetchSettlementReport(platform: Platform, items: DocumentI
 export async function saveOrderPayout(platform: Platform, orderCode: string, payoutAmount: number, payoutKind: 'estimated' | 'actual', sourceFile: string | null = null) {
   if (!orderCode.trim()) throw new Error('Mã đơn hàng không được để trống.');
   if (!Number.isFinite(payoutAmount) || payoutAmount < 0) throw new Error('Tiền quyết toán phải là số không âm.');
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { error } = await (supabase as any).from('marketplace_order_settlements').upsert({
     platform,
     order_code: orderCode.trim(),
