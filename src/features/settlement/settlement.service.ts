@@ -7,7 +7,7 @@ export interface ProductPriceRule {
   product_name: string;
   sale_price: number;
   minimum_payout: number;
-  cost_price: number;
+  cost_price: number | null;
 }
 export interface OrderPayout {
   platform: Platform;
@@ -52,8 +52,8 @@ export async function fetchSettlementReport(platform: Platform, items: DocumentI
   ]);
   if (priceResult.error) throw priceResult.error;
   if (payoutResult.error) throw payoutResult.error;
-  const prices = new Map<string, ProductPriceRule>((priceResult.data ?? []).map((row: ProductPriceRule) => [row.sku.trim(), row]));
-  const payouts = new Map<string, OrderPayout>((payoutResult.data ?? []).map((row: OrderPayout) => [row.order_code.trim(), row]));
+  const prices = new Map<string, ProductPriceRule>((priceResult.data ?? []).map((row: ProductPriceRule) => [row.sku.trim(), row] as const));
+  const payouts = new Map<string, OrderPayout>((payoutResult.data ?? []).map((row: OrderPayout) => [row.order_code.trim(), row] as const));
   const grouped = new Map<string, DocumentItemInput[]>();
   for (const item of items) {
     const key = item.orderCode.trim();
