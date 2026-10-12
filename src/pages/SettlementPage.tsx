@@ -22,10 +22,6 @@ const money = (value: number) => new Intl.NumberFormat('vi-VN', { maximumFractio
 const platformLabel = (value: Platform) => value === 'shopee' ? 'Shopee' : 'TikTok Shop';
 const clean = (value: unknown) => String(value ?? '').trim();
 const normalize = (value: unknown) => clean(value).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/đ/g, 'd').replace(/[^a-z0-9]/g, '');
-function headerIndex(headers: unknown[], names: string[]) {
-  const normalized = headers.map(normalize);
-  return normalized.findIndex((header) => names.some((name) => normalized.includes(normalize(name)) && normalize(name) === header));
-}
 function findHeader(headers: unknown[], aliases: string[]) {
   const normalized = headers.map(normalize);
   return normalized.findIndex((header) => aliases.some((alias) => header === normalize(alias)));
@@ -117,11 +113,12 @@ export function SettlementPage() {
       if ([skuCol, nameCol, saleCol, minimumCol].some((col) => col < 0)) {
         throw new Error('Thiếu cột bắt buộc: SKU, Tên sản phẩm, Giá bán trên sàn, Giá cần thu tối thiểu. Hãy tải file mẫu để đối chiếu.');
       }
+      if (platformCol < 0 && platform === 'all') throw new Error('File thiếu cột Nền tảng. Hãy thêm cột này hoặc chọn lọc riêng Shopee/TikTok trước khi nhập.');
       const records = rows.slice(1).filter((row) => clean(row[skuCol]) && clean(row[nameCol])).map((row, index) => {
         const sale = parseAmount(row[saleCol]);
         const minimum = parseAmount(row[minimumCol]);
         const cost = costCol >= 0 && clean(row[costCol]) ? parseAmount(row[costCol]) : 0;
-        const parsedPlatform = platformCol >= 0 ? parsePlatform(row[platformCol]) : platform;
+        const parsedPlatform = platformCol >= 0 ? parsePlatform(row[platformCol]) : (platform === 'all' ? null : platform);
         if (!parsedPlatform) throw new Error(`Dòng ${index + 2}: Nền tảng phải là Shopee hoặc TikTok Shop.`);
         if (![sale, minimum, cost].every((value) => Number.isFinite(value) && value >= 0)) {
           throw new Error(`Dòng ${index + 2}: Giá phải là số không âm, ví dụ 40000.`);
