@@ -72,7 +72,6 @@ export function SettlementPage() {
     setLoading(false);
   }
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { void loadPrices(); }, []);
 
   async function downloadTemplate() {
