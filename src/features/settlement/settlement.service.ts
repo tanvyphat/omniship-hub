@@ -68,7 +68,7 @@ export async function fetchSettlementReport(platform: Platform, items: DocumentI
         ...item,
         salePrice: price ? Number(price.sale_price) : null,
         minimumPayout: price ? Number(price.minimum_payout) : null,
-        costPrice: price ? Number(price.cost_price) : null,
+        costPrice: price && price.cost_price !== null ? Number(price.cost_price) : null,
         grossAmount: price ? Number(price.sale_price) * quantity : null,
         allocatedPayout: null,
         targetAmount: price ? Number(price.minimum_payout) * quantity : null,
@@ -80,7 +80,8 @@ export async function fetchSettlementReport(platform: Platform, items: DocumentI
     const targetTotal = lines.reduce((sum, line) => sum + (line.targetAmount ?? 0), 0);
     const costTotal = lines.reduce((sum, line) => sum + (line.costPrice ?? 0) * line.quantity, 0);
     const payout = payouts.get(orderCode) ?? null;
-    if (payout && saleTotal > 0) {
+    const canAllocate = lines.every((line) => line.grossAmount !== null) && saleTotal > 0;
+    if (payout && canAllocate) {
       let allocatedSoFar = 0;
       const pricedLines = lines.filter((line) => line.grossAmount !== null && line.grossAmount > 0);
       const lastLine = pricedLines[pricedLines.length - 1];
@@ -95,7 +96,7 @@ export async function fetchSettlementReport(platform: Platform, items: DocumentI
         line.profit = line.costPrice === null ? null : allocated - line.costPrice * line.quantity;
       }
     }
-    const allocatedTotal = payout && saleTotal > 0 ? Number(payout.payout_amount) : null;
+    const allocatedTotal = payout && canAllocate ? Number(payout.payout_amount) : null;
     const hasAllTargets = lines.every((line) => line.targetAmount !== null);
     const hasAllCosts = lines.every((line) => line.costPrice !== null);
     return {
