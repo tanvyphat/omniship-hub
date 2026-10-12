@@ -14,7 +14,7 @@ interface ProductPrice {
   product_name: string;
   sale_price: number;
   minimum_payout: number;
-  cost_price: number;
+  cost_price: number | null;
   updated_at: string;
 }
 
@@ -33,7 +33,8 @@ function parseAmount(value: unknown) {
 }
 function parsePlatform(value: unknown): Platform | null {
   const normalized = normalize(value);
-  if (!normalized || normalized.includes('shopee')) return 'shopee';
+  if (normalized.includes('shopee')) return 'shopee';
+  if (!normalized) return null;
   if (normalized.includes('tiktok')) return 'tiktok';
   return null;
 }
