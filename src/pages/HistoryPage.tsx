@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   CalendarDays,
   ChevronDown,
@@ -401,7 +401,7 @@ export function HistoryPage() {
               )}
 
               {!loading && !featureLoading && !error && rows.map((row, index) => (
-                <>
+                <Fragment key={row.id}>
                   <tr key={row.id} className={`group border-b border-slate-100/90 transition-all duration-200 hover:bg-violet-50/35 ${expandedId === row.id ? 'bg-violet-50/40' : ''}`}>
                     <td className="px-5 py-4">
                       <span className="inline-grid h-7 min-w-7 place-items-center rounded-lg bg-slate-100 px-2 text-xs font-black text-slate-500 transition-colors group-hover:bg-violet-100 group-hover:text-violet-700">
@@ -505,7 +505,7 @@ export function HistoryPage() {
                       </td>
                     </tr>
                   )}
-                </>
+                </Fragment>
               ))}
             </tbody>
           </table>
