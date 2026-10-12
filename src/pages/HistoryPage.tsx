@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   CalendarDays,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   ClipboardList,
@@ -54,6 +55,9 @@ export function HistoryPage() {
   const [error, setError] = useState('');
   const [filterError, setFilterError] = useState('');
   const [exportingId, setExportingId] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [detailById, setDetailById] = useState<Record<string, Awaited<ReturnType<typeof fetchDocument>>>>({});
+  const [detailLoadingId, setDetailLoadingId] = useState<string | null>(null);
 
   const allowedTypes = useMemo<DocumentType[]>(() => {
     const result: DocumentType[] = [];
@@ -146,6 +150,28 @@ export function HistoryPage() {
     setTo('');
     setPage(0);
     setFilterError('');
+  }
+
+  async function toggleQuickView(id: string) {
+    if (expandedId === id) {
+      setExpandedId(null);
+      return;
+    }
+
+    setExpandedId(id);
+    if (detailById[id]) return;
+
+    setDetailLoadingId(id);
+    setError('');
+    try {
+      const document = await fetchDocument(id);
+      setDetailById((current) => ({ ...current, [id]: document }));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Không thể tải nhanh chi tiết phiếu.');
+      setExpandedId(null);
+    } finally {
+      setDetailLoadingId(null);
+    }
   }
 
   async function exportSavedDocument(id: string) {
@@ -375,47 +401,111 @@ export function HistoryPage() {
               )}
 
               {!loading && !featureLoading && !error && rows.map((row, index) => (
-                <tr key={row.id} className="group border-b border-slate-100/90 transition-all duration-200 hover:bg-violet-50/35">
-                  <td className="px-5 py-4">
-                    <span className="inline-grid h-7 min-w-7 place-items-center rounded-lg bg-slate-100 px-2 text-xs font-black text-slate-500 transition-colors group-hover:bg-violet-100 group-hover:text-violet-700">
-                      {page * PAGE_SIZE + index + 1}
-                    </span>
-                  </td>
-                  <td className="whitespace-nowrap px-5 py-4 font-bold text-slate-800">{formatDateVN(row.documentDate)}</td>
-                  <td className="px-5 py-4">
-                    <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-bold ${row.type === 'outbound' ? 'border-blue-100 bg-blue-50 text-blue-700' : 'border-amber-100 bg-amber-50 text-amber-700'}`}>
-                      {row.type === 'outbound' ? <PackageCheck className="h-3.5 w-3.5" /> : <RotateCcw className="h-3.5 w-3.5" />}
-                      {row.type === 'outbound' ? 'Phiếu xuất hàng' : 'Phiếu hoàn hàng'}
-                    </span>
-                  </td>
-                  <td className="px-5 py-4 font-black text-slate-800">{row.orderCount}</td>
-                  <td className="px-5 py-4 font-semibold text-slate-500">{row.itemCount}</td>
-                  <td className="px-5 py-4 text-right text-base font-black text-slate-950">{row.totalQuantity}</td>
-                  <td className="px-5 py-4">
-                    <div className="flex justify-end gap-2">
-                      <Button
-                        variant="secondary"
-                        className="h-9 px-3 transition-all duration-300 hover:-translate-y-0.5 hover:border-violet-200 hover:text-violet-700"
-                        title="Chỉnh sửa phiếu"
-                        onClick={() => navigate(`/warehouse/history/${platform}/${row.id}/edit?type=${row.type}`)}
-                      >
-                        <Edit3 className="h-4 w-4" />
-                        <span className="hidden lg:inline">Sửa</span>
-                      </Button>
-                      <Button
-                        variant="secondary"
-                        className="h-9 px-3 transition-all duration-300 hover:-translate-y-0.5 hover:border-emerald-200 hover:text-emerald-700"
-                        title="Xuất lại file Excel"
-                        loading={exportingId === row.id}
-                        disabled={exportingId !== null || loading}
-                        onClick={() => void exportSavedDocument(row.id)}
-                      >
-                        <Download className="h-4 w-4" />
-                        <span className="hidden lg:inline">Xuất Excel</span>
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
+                <>
+                  <tr key={row.id} className={`group border-b border-slate-100/90 transition-all duration-200 hover:bg-violet-50/35 ${expandedId === row.id ? 'bg-violet-50/40' : ''}`}>
+                    <td className="px-5 py-4">
+                      <span className="inline-grid h-7 min-w-7 place-items-center rounded-lg bg-slate-100 px-2 text-xs font-black text-slate-500 transition-colors group-hover:bg-violet-100 group-hover:text-violet-700">
+                        {page * PAGE_SIZE + index + 1}
+                      </span>
+                    </td>
+                    <td className="whitespace-nowrap px-5 py-4 font-bold text-slate-800">{formatDateVN(row.documentDate)}</td>
+                    <td className="px-5 py-4">
+                      <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-bold ${row.type === 'outbound' ? 'border-blue-100 bg-blue-50 text-blue-700' : 'border-amber-100 bg-amber-50 text-amber-700'}`}>
+                        {row.type === 'outbound' ? <PackageCheck className="h-3.5 w-3.5" /> : <RotateCcw className="h-3.5 w-3.5" />}
+                        {row.type === 'outbound' ? 'Phiếu xuất hàng' : 'Phiếu hoàn hàng'}
+                      </span>
+                    </td>
+                    <td className="px-5 py-4 font-black text-slate-800">{row.orderCount}</td>
+                    <td className="px-5 py-4 font-semibold text-slate-500">{row.itemCount}</td>
+                    <td className="px-5 py-4 text-right text-base font-black text-slate-950">{row.totalQuantity}</td>
+                    <td className="px-5 py-4">
+                      <div className="flex justify-end gap-2">
+                        <Button
+                          variant="secondary"
+                          className={`h-9 px-3 transition-all duration-300 hover:-translate-y-0.5 hover:border-violet-200 hover:text-violet-700 ${expandedId === row.id ? 'border-violet-200 bg-violet-50 text-violet-700' : ''}`}
+                          title={expandedId === row.id ? 'Thu gọn chi tiết' : 'Xem nhanh đơn hàng trong phiếu'}
+                          onClick={() => void toggleQuickView(row.id)}
+                          disabled={detailLoadingId !== null && detailLoadingId !== row.id}
+                        >
+                          {detailLoadingId === row.id ? <RefreshCw className="h-4 w-4 animate-spin" /> : <ChevronDown className={`h-4 w-4 transition-transform ${expandedId === row.id ? 'rotate-180' : ''}`} />}
+                          <span className="hidden lg:inline">{expandedId === row.id ? 'Thu gọn' : 'Xem nhanh'}</span>
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          className="h-9 px-3 transition-all duration-300 hover:-translate-y-0.5 hover:border-violet-200 hover:text-violet-700"
+                          title="Chỉnh sửa phiếu"
+                          onClick={() => navigate(`/warehouse/history/${platform}/${row.id}/edit?type=${row.type}`)}
+                        >
+                          <Edit3 className="h-4 w-4" />
+                          <span className="hidden lg:inline">Sửa</span>
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          className="h-9 px-3 transition-all duration-300 hover:-translate-y-0.5 hover:border-emerald-200 hover:text-emerald-700"
+                          title="Xuất lại file Excel"
+                          loading={exportingId === row.id}
+                          disabled={exportingId !== null || loading}
+                          onClick={() => void exportSavedDocument(row.id)}
+                        >
+                          <Download className="h-4 w-4" />
+                          <span className="hidden lg:inline">Xuất Excel</span>
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                  {expandedId === row.id && (
+                    <tr key={`${row.id}-quick-view`} className="border-b border-violet-100 bg-gradient-to-r from-violet-50/70 via-white to-blue-50/50">
+                      <td colSpan={7} className="px-5 py-5">
+                        {detailLoadingId === row.id && !detailById[row.id] ? (
+                          <div className="flex items-center justify-center gap-2 py-5 text-sm font-semibold text-slate-500">
+                            <RefreshCw className="h-4 w-4 animate-spin text-violet-500" />
+                            Đang tải danh sách đơn hàng…
+                          </div>
+                        ) : detailById[row.id] ? (
+                          <div className="space-y-3">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div>
+                                <h3 className="font-black text-slate-900">Chi tiết đơn hàng trong ngày {formatDateVN(row.documentDate)}</h3>
+                                <p className="mt-1 text-xs font-medium text-slate-500">
+                                  {new Set(detailById[row.id].items.map((item) => item.orderCode.trim()).filter(Boolean)).size} đơn hàng · {detailById[row.id].items.length} dòng sản phẩm · Tổng SL {detailById[row.id].items.reduce((sum, item) => sum + item.quantity, 0)}
+                                </p>
+                              </div>
+                              <span className={`rounded-full px-3 py-1.5 text-xs font-bold ${row.type === 'outbound' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'}`}>
+                                {row.type === 'outbound' ? 'Phiếu xuất hàng' : 'Phiếu hoàn hàng'}
+                              </span>
+                            </div>
+                            <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
+                              <table className="w-full min-w-[760px] text-left text-sm">
+                                <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
+                                  <tr>
+                                    <th className="px-4 py-3 font-black">Mã đơn hàng</th>
+                                    <th className="px-4 py-3 font-black">Tên sản phẩm</th>
+                                    <th className="px-4 py-3 font-black">SKU phân loại</th>
+                                    <th className="px-4 py-3 font-black">Dung tích / Khối lượng</th>
+                                    <th className="px-4 py-3 font-black">Hương / Màu</th>
+                                    <th className="px-4 py-3 text-right font-black">Số lượng</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {detailById[row.id].items.map((item, itemIndex) => (
+                                    <tr key={`${row.id}-item-${itemIndex}`} className="border-t border-slate-100 hover:bg-violet-50/40">
+                                      <td className="whitespace-nowrap px-4 py-3 font-bold text-slate-800">{item.orderCode || '—'}</td>
+                                      <td className="px-4 py-3 font-semibold text-slate-700">{item.productName || '—'}</td>
+                                      <td className="px-4 py-3 text-slate-600">{item.sku || '—'}</td>
+                                      <td className="px-4 py-3 text-slate-600">{item.unit || '—'}</td>
+                                      <td className="px-4 py-3 text-slate-600">{item.variant || '—'}</td>
+                                      <td className="px-4 py-3 text-right font-black text-slate-900">{item.quantity}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        ) : null}
+                      </td>
+                    </tr>
+                  )}
+                </>
               ))}
             </tbody>
           </table>
