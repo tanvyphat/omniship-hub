@@ -515,7 +515,7 @@ export function HistoryPage() {
                                 </tbody>
                               </table>
                             </div>
-                            <OrderSettlementPanel platform={platform} items={detailById[row.id].items} />
+                            {row.type === 'outbound' && <OrderSettlementPanel platform={platform} items={detailById[row.id].items} />}
                           </div>
                         ) : null}
                       </td>
