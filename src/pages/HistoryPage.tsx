@@ -26,6 +26,7 @@ import { exportDocumentExcel } from '../lib/excel';
 import type { DocumentHistoryItem, DocumentType, Platform } from '../types/document';
 
 const PAGE_SIZE = 100;
+type HistoryDocument = Awaited<ReturnType<typeof fetchDocument>>;
 
 function oneYearApart(from: string, to: string) {
   if (!from || !to) return true;
@@ -488,7 +489,7 @@ export function HistoryPage() {
                                 </thead>
                                 <tbody>
                                   {Object.entries(
-                                    detailById[row.id].items.reduce<Record<string, { orderCode: string; items: typeof detailById[string]['items'] }>>((groups, item, itemIndex) => {
+                                    detailById[row.id].items.reduce<Record<string, { orderCode: string; items: HistoryDocument['items'] }>>((groups, item, itemIndex) => {
                                       const orderCode = item.orderCode.trim();
                                       const groupKey = orderCode || `__missing_order_${itemIndex}`;
                                       if (!groups[groupKey]) groups[groupKey] = { orderCode, items: [] };
