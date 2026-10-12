@@ -487,16 +487,29 @@ export function HistoryPage() {
                                   </tr>
                                 </thead>
                                 <tbody>
-                                  {detailById[row.id].items.map((item, itemIndex) => (
-                                    <tr key={`${row.id}-item-${itemIndex}`} className="border-t border-slate-100 hover:bg-violet-50/40">
-                                      <td className="whitespace-nowrap px-4 py-3 font-bold text-slate-800">{item.orderCode || '—'}</td>
+                                  {Object.entries(
+                                    detailById[row.id].items.reduce<Record<string, { orderCode: string; items: typeof detailById[string]['items'] }>>((groups, item, itemIndex) => {
+                                      const orderCode = item.orderCode.trim();
+                                      const groupKey = orderCode || `__missing_order_${itemIndex}`;
+                                      if (!groups[groupKey]) groups[groupKey] = { orderCode, items: [] };
+                                      groups[groupKey].items.push(item);
+                                      return groups;
+                                    }, {}),
+                                  ).flatMap(([groupKey, group]) => group.items.map((item, itemIndex) => (
+                                    <tr key={`${row.id}-${groupKey}-item-${itemIndex}`} className="border-t border-slate-100 hover:bg-violet-50/40">
+                                      {itemIndex === 0 && (
+                                        <td rowSpan={group.items.length} className="whitespace-nowrap border-r border-slate-100 bg-slate-50/70 px-4 py-3 align-top font-black text-slate-800">
+                                          {group.orderCode || '—'}
+                                          {group.items.length > 1 && <span className="mt-1 block text-[11px] font-semibold text-slate-400">{group.items.length} dòng hàng</span>}
+                                        </td>
+                                      )}
                                       <td className="px-4 py-3 font-semibold text-slate-700">{item.productName || '—'}</td>
                                       <td className="px-4 py-3 text-slate-600">{item.sku || '—'}</td>
                                       <td className="px-4 py-3 text-slate-600">{item.unit || '—'}</td>
                                       <td className="px-4 py-3 text-slate-600">{item.variant || '—'}</td>
                                       <td className="px-4 py-3 text-right font-black text-slate-900">{item.quantity}</td>
                                     </tr>
-                                  ))}
+                                  )))}
                                 </tbody>
                               </table>
                             </div>
