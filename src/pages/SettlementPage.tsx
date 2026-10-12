@@ -119,10 +119,10 @@ export function SettlementPage() {
       const records = rows.slice(1).filter((row) => clean(row[skuCol]) && clean(row[nameCol])).map((row, index) => {
         const sale = parseAmount(row[saleCol]);
         const minimum = parseAmount(row[minimumCol]);
-        const cost = costCol >= 0 && clean(row[costCol]) ? parseAmount(row[costCol]) : 0;
+        const cost = costCol >= 0 && clean(row[costCol]) ? parseAmount(row[costCol]) : null;
         const parsedPlatform = platformCol >= 0 ? parsePlatform(row[platformCol]) : (platform === 'all' ? null : platform);
         if (!parsedPlatform) throw new Error(`Dòng ${index + 2}: Nền tảng phải là Shopee hoặc TikTok Shop.`);
-        if (![sale, minimum, cost].every((value) => Number.isFinite(value) && value >= 0)) {
+        if (![sale, minimum].every((value) => Number.isFinite(value) && value >= 0) || (cost !== null && (!Number.isFinite(cost) || cost < 0))) {
           throw new Error(`Dòng ${index + 2}: Giá phải là số không âm, ví dụ 40000.`);
         }
         return {
@@ -240,7 +240,7 @@ export function SettlementPage() {
         {loading ? <div className="p-12 text-center text-sm font-semibold text-slate-500">Đang tải bảng giá…</div> : visiblePrices.length === 0 ? <div className="p-12 text-center text-sm text-slate-500">Chưa có bảng giá. Hãy nhập file Excel để bắt đầu.</div> : (
           <div className="overflow-x-auto"><table className="w-full min-w-[900px] text-left text-sm">
             <thead className="bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="px-4 py-3">Nền tảng</th><th className="px-4 py-3">SKU</th><th className="px-4 py-3">Tên sản phẩm</th><th className="px-4 py-3 text-right">Giá bán</th><th className="px-4 py-3 text-right">Mức thu tối thiểu</th><th className="px-4 py-3 text-right">Giá vốn</th><th className="px-4 py-3">Cập nhật</th><th className="px-4 py-3"></th></tr></thead>
-            <tbody>{visiblePrices.map((item) => <tr key={item.id} className="border-t border-slate-100 hover:bg-slate-50"><td className="px-4 py-3 font-semibold">{platformLabel(item.platform)}</td><td className="px-4 py-3 font-mono text-xs">{item.sku}</td><td className="px-4 py-3 font-semibold">{item.product_name}</td><td className="px-4 py-3 text-right tabular-nums">{money(Number(item.sale_price))}</td><td className="px-4 py-3 text-right tabular-nums">{money(Number(item.minimum_payout))}</td><td className="px-4 py-3 text-right tabular-nums">{money(Number(item.cost_price))}</td><td className="px-4 py-3 text-xs text-slate-500">{new Date(item.updated_at).toLocaleDateString('vi-VN')}</td><td className="px-4 py-3 text-right"><button type="button" onClick={() => void deletePrice(item.id)} className="cursor-pointer rounded-lg p-2 text-rose-500 hover:bg-rose-50" title="Xóa giá"><Trash2 className="h-4 w-4" /></button></td></tr>)}</tbody>
+            <tbody>{visiblePrices.map((item) => <tr key={item.id} className="border-t border-slate-100 hover:bg-slate-50"><td className="px-4 py-3 font-semibold">{platformLabel(item.platform)}</td><td className="px-4 py-3 font-mono text-xs">{item.sku}</td><td className="px-4 py-3 font-semibold">{item.product_name}</td><td className="px-4 py-3 text-right tabular-nums">{money(Number(item.sale_price))}</td><td className="px-4 py-3 text-right tabular-nums">{money(Number(item.minimum_payout))}</td><td className="px-4 py-3 text-right tabular-nums">{item.cost_price === null ? 'Chưa nhập' : money(Number(item.cost_price))}</td><td className="px-4 py-3 text-xs text-slate-500">{new Date(item.updated_at).toLocaleDateString('vi-VN')}</td><td className="px-4 py-3 text-right"><button type="button" onClick={() => void deletePrice(item.id)} className="cursor-pointer rounded-lg p-2 text-rose-500 hover:bg-rose-50" title="Xóa giá"><Trash2 className="h-4 w-4" /></button></td></tr>)}</tbody>
           </table></div>
         )}
       </section>
