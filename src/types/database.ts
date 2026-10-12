@@ -26,6 +26,16 @@ export interface Database {
         };
         Update: Partial<Database['public']['Tables']['warehouse_documents']['Insert']>;
       };
+      marketplace_product_prices: {
+        Row: { id: string; platform: 'tiktok' | 'shopee'; sku: string; product_name: string; sale_price: number; minimum_payout: number; cost_price: number; updated_at: string; created_at: string };
+        Insert: { id?: string; platform: 'tiktok' | 'shopee'; sku: string; product_name: string; sale_price: number; minimum_payout: number; cost_price?: number; updated_at?: string; created_at?: string };
+        Update: Partial<Database['public']['Tables']['marketplace_product_prices']['Insert']>;
+      };
+      marketplace_order_settlements: {
+        Row: { id: string; platform: 'tiktok' | 'shopee'; order_code: string; payout_amount: number; payout_kind: 'estimated' | 'actual'; source_file: string | null; updated_at: string; created_at: string };
+        Insert: { id?: string; platform: 'tiktok' | 'shopee'; order_code: string; payout_amount: number; payout_kind?: 'estimated' | 'actual'; source_file?: string | null; updated_at?: string; created_at?: string };
+        Update: Partial<Database['public']['Tables']['marketplace_order_settlements']['Insert']>;
+      };
       warehouse_document_items: {
         Row: {
           id: string;
