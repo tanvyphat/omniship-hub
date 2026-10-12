@@ -80,12 +80,8 @@ export function SettlementPage() {
     workbook.creator = 'OmniShip Hub';
     const priceSheet = workbook.addWorksheet('BANG_GIA');
     priceSheet.addRow(['Nền tảng', 'SKU', 'Tên sản phẩm', 'Giá bán trên sàn', 'Giá cần thu tối thiểu', 'Giá vốn']);
-    priceSheet.addRow(['Shopee', 'NLSMOPPI600MLHONG', 'MOPPI 600ml Hồng', 40000, 30000, 25000]);
-    priceSheet.addRow(['Shopee', 'BGPAO5T', 'Bột giặt PAO 5kg', 240000, 200000, 160000]);
     const settlementSheet = workbook.addWorksheet('QUYET_TOAN');
     settlementSheet.addRow(['Nền tảng', 'Mã đơn hàng', 'Tiền quyết toán đơn', 'Loại quyết toán']);
-    settlementSheet.addRow(['Shopee', 'DH001', 261600, 'actual']);
-    settlementSheet.addRow(['TikTok Shop', 'DH002', 150000, 'estimated']);
     [priceSheet, settlementSheet].forEach((sheet) => {
       sheet.columns.forEach((column) => { column.width = 25; });
       sheet.getRow(1).font = { name: 'Times New Roman', bold: true, color: { argb: 'FFFFFF' } };
