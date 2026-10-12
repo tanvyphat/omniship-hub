@@ -1,6 +1,7 @@
 import ExcelJS from 'exceljs';
 import type {DocumentInput} from '../types/document';
 import {getTodayISO} from './date';
+import { fetchSettlementReport } from '../features/settlement/settlement.service';
 
 const navy = '0F172A';
 const blue = '2563EB';
@@ -290,6 +291,68 @@ export async function exportDocumentExcel(input: DocumentInput) {
     });
     meta.eachRow((row) => addBorder(row));
 
+
+    // ==========================================
+    // SHEET 5: QUYẾT TOÁN THEO ĐƠN VÀ SẢN PHẨM
+    // ==========================================
+    const settlementSheet = workbook.addWorksheet('QUYET_TOAN', {views: [{showGridLines: false}]});
+    settlementSheet.columns = [
+        {width: 22}, {width: 36}, {width: 22}, {width: 12}, {width: 18},
+        {width: 20}, {width: 20}, {width: 20}, {width: 20}, {width: 18},
+    ];
+    settlementSheet.addRow(['Mã đơn hàng', 'Tên sản phẩm', 'SKU', 'Số lượng', 'Giá bán/đv',
+        'Tổng giá bán', 'Quyết toán phân bổ', 'Mức thu tối thiểu', 'Chênh lệch mục tiêu', 'Lãi/lỗ sau vốn']);
+    let settlementReportAvailable = true;
+    try {
+        const reports = input.type === 'outbound' ? await fetchSettlementReport(input.platform, input.items) : [];
+        if (input.type === 'return') {
+            settlementSheet.addRow(['Phiếu hoàn hàng: không tính doanh thu quyết toán.']);
+        } else if (reports.length === 0) {
+            settlementSheet.addRow(['Không có mã đơn hàng để đối soát.']);
+        }
+        for (const report of reports) {
+            for (const line of report.lines) {
+                settlementSheet.addRow([
+                    report.orderCode, line.productName, line.sku, line.quantity, line.salePrice,
+                    line.grossAmount, line.allocatedPayout, line.targetAmount, line.targetDifference, line.profit,
+                ]);
+            }
+            const summaryRow = settlementSheet.addRow([
+                report.orderCode, 'TỔNG ĐƠN', '', report.lines.reduce((sum, line) => sum + line.quantity, 0),
+                null, report.saleTotal, report.allocatedTotal, report.targetTotal, report.targetDifference, report.profit,
+            ]);
+            summaryRow.font = {name: 'Times New Roman', bold: true};
+        }
+    } catch (settlementError) {
+        settlementReportAvailable = false;
+        const reason = settlementError instanceof Error ? settlementError.message : 'Không thể tải dữ liệu quyết toán.';
+        settlementSheet.addRow(['Chưa tải được dữ liệu quyết toán. Hãy kiểm tra migration và kết nối Supabase.']);
+        settlementSheet.addRow([reason.slice(0, 250)]);
+    }
+    const settlementHeader = settlementSheet.getRow(1);
+    settlementHeader.eachCell({includeEmpty: true}, (cell) => {
+        cell.font = {name: 'Times New Roman', bold: true, color: {argb: 'FFFFFF'}};
+        cell.fill = {type: 'pattern', pattern: 'solid', fgColor: {argb: blue}};
+        cell.alignment = {vertical: 'middle', horizontal: 'center', wrapText: true};
+    });
+    settlementHeader.height = 32;
+    settlementSheet.eachRow((row, index) => {
+        if (index > 1) {
+            row.eachCell({includeEmpty: true}, (cell) => {
+                cell.alignment = {vertical: 'middle', wrapText: true};
+                if (index % 2 === 0) cell.fill = {type: 'pattern', pattern: 'solid', fgColor: {argb: 'F8FAFC'}};
+                if (typeof cell.value === 'number' || (cell.value && typeof cell.value === 'object' && 'result' in cell.value)) {
+                    cell.numFmt = '#,##0;[Red]-#,##0;0';
+                }
+            });
+            addBorder(row);
+        }
+    });
+    settlementSheet.autoFilter = {from: 'A1', to: 'J1'};
+    settlementSheet.views = [{state: 'frozen', ySplit: 1, showGridLines: false}];
+    if (!settlementReportAvailable) {
+        settlementSheet.getCell('A2').font = {name: 'Times New Roman', bold: true, color: {argb: 'B91C1C'}};
+    }
 
     // ==========================================
     // FINALIZING & EXPORT
