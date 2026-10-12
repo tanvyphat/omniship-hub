@@ -8,7 +8,7 @@ create table if not exists public.marketplace_product_prices (
   product_name text not null check (char_length(trim(product_name)) between 1 and 300),
   sale_price numeric(14,2) not null check (sale_price >= 0),
   minimum_payout numeric(14,2) not null check (minimum_payout >= 0),
-  cost_price numeric(14,2) not null default 0 check (cost_price >= 0),
+  cost_price numeric(14,2) check (cost_price is null or cost_price >= 0),
   updated_at timestamptz not null default now(),
   created_at timestamptz not null default now(),
   unique (platform, sku)
