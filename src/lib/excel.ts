@@ -304,8 +304,10 @@ export async function exportDocumentExcel(input: DocumentInput) {
         'Tổng giá bán', 'Quyết toán phân bổ', 'Mức thu tối thiểu', 'Chênh lệch mục tiêu', 'Lãi/lỗ sau vốn']);
     let settlementReportAvailable = true;
     try {
-        const reports = await fetchSettlementReport(input.platform, input.items);
-        if (reports.length === 0) {
+        const reports = input.type === 'outbound' ? await fetchSettlementReport(input.platform, input.items) : [];
+        if (input.type === 'return') {
+            settlementSheet.addRow(['Phiếu hoàn hàng: không tính doanh thu quyết toán.']);
+        } else if (reports.length === 0) {
             settlementSheet.addRow(['Không có mã đơn hàng để đối soát.']);
         }
         for (const report of reports) {
