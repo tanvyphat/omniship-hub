@@ -30,7 +30,7 @@ export function OrderSettlementPanel({ platform, items }: { platform: Platform; 
 
   const totals = useMemo(() => reports.reduce((sum, report) => ({
     gross: sum.gross + report.saleTotal,
-    payout: sum.payout + (report.allocatedTotal ?? 0),
+    payout: sum.payout + (report.payout ? Number(report.payout.payout_amount) : 0),
     target: sum.target + report.targetTotal,
     difference: sum.difference + (report.targetDifference ?? 0),
     profit: sum.profit + (report.profit ?? 0),
