@@ -56,6 +56,7 @@ export function SettlementPage() {
   async function loadPrices() {
     setLoading(true);
     setError('');
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { data, error: queryError } = await (supabase as any)
       .from('marketplace_product_prices')
       .select('id, platform, sku, product_name, sale_price, minimum_payout, cost_price, updated_at')
@@ -134,6 +135,7 @@ export function SettlementPage() {
         };
       });
       if (!records.length) throw new Error('Không tìm thấy dòng sản phẩm hợp lệ.');
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { error: upsertError } = await (supabase as any).from('marketplace_product_prices')
         .upsert(records, { onConflict: 'platform,sku' });
       if (upsertError) throw upsertError;
@@ -174,6 +176,7 @@ export function SettlementPage() {
         return { platform: parsedPlatform, order_code: clean(row[orderCol]), payout_amount: amount, payout_kind: kind, source_file: file.name };
       });
       if (!records.length) throw new Error('Không tìm thấy đơn hàng hợp lệ.');
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const { error: upsertError } = await (supabase as any).from('marketplace_order_settlements')
         .upsert(records, { onConflict: 'platform,order_code' });
       if (upsertError) throw upsertError;
@@ -188,6 +191,7 @@ export function SettlementPage() {
 
   async function deletePrice(id: string) {
     if (!window.confirm('Xóa dòng giá này? Các phiếu xuất/hoàn đã lưu sẽ không bị xóa.')) return;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const { error: deleteError } = await (supabase as any).from('marketplace_product_prices').delete().eq('id', id);
     if (deleteError) setError('Không thể xóa giá sản phẩm.');
     else { setPrices((current) => current.filter((item) => item.id !== id)); setMessage('Đã xóa dòng giá.'); }
