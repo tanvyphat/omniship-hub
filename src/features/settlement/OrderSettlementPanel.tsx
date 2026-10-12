@@ -25,6 +25,7 @@ export function OrderSettlementPanel({ platform, items }: { platform: Platform; 
       setError(err instanceof Error ? err.message : 'Không tải được dữ liệu quyết toán.');
     } finally { setLoading(false); }
   }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { void load(); }, [platform, items]);
 
   const totals = useMemo(() => reports.reduce((sum, report) => ({
