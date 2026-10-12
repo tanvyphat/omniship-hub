@@ -40,7 +40,11 @@ function parsePlatform(value: unknown): Platform | null {
 }
 function worksheetRows(sheet: ExcelJS.Worksheet) {
   const rows: unknown[][] = [];
-  sheet.eachRow({ includeEmpty: false }, (row) => rows.push(row.values.slice(1) as unknown[]));
+  sheet.eachRow({ includeEmpty: false }, (row) => {
+    const values = row.values;
+    if (Array.isArray(values)) rows.push(values.slice(1) as unknown[]);
+    else rows.push(Object.keys(values).sort((a, b) => Number(a) - Number(b)).map((key) => (values as Record<string, unknown>)[key]));
+  });
   return rows;
 }
 
