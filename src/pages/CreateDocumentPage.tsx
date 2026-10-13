@@ -427,6 +427,7 @@ export function CreateDocumentPage({ type: createType, edit = false }: Props) {
                 onRemove={() => removeItem(index)}
                 canRemove={items.length > 1}
                 showVariant
+                showPricing={documentType === 'outbound'}
               />
             ))}
           </div>
