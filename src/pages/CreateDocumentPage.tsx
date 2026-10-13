@@ -28,7 +28,7 @@ import { importMarketplaceOrders } from '../lib/importMarketplaceOrders';
 import type { MarketplaceImportResult } from '../lib/importMarketplaceOrders';
 import type { DocumentInput, DocumentItemInput, DocumentType, Platform } from '../types/document';
 
-const emptyItem = (): DocumentItemInput => ({ orderCode: '', productName: '', sku: '', variant: '', unit: '', quantity: 1 });
+const emptyItem = (): DocumentItemInput => ({ orderCode: '', productName: '', sku: '', variant: '', unit: '', quantity: 1, salePrice: 0, settlementAmount: 0, costPrice: 0 });
 
 interface Props {
   type?: DocumentType;
@@ -96,6 +96,10 @@ export function CreateDocumentPage({ type: createType, edit = false }: Props) {
     () => items.reduce((sum, item) => sum + (Number.isFinite(item.quantity) ? item.quantity : 0), 0),
     [items],
   );
+  const saleTotal = useMemo(() => items.reduce((sum, item) => sum + (item.salePrice || 0) * (item.quantity || 0), 0), [items]);
+  const settlementTotal = useMemo(() => items.reduce((sum, item) => sum + (item.settlementAmount || 0), 0), [items]);
+  const costTotal = useMemo(() => items.reduce((sum, item) => sum + (item.costPrice || 0) * (item.quantity || 0), 0), [items]);
+  const profitTotal = settlementTotal - costTotal;
 
   if (!edit && (!documentType || !platform)) {
     return <Navigate to={createType === 'outbound' ? '/warehouse/outbound/platform' : '/warehouse/returns/platform'} replace />;
@@ -394,6 +398,22 @@ export function CreateDocumentPage({ type: createType, edit = false }: Props) {
                   </div>
                 </div>
               </div>
+            </div>
+          )}
+
+          {documentType === 'outbound' && (
+            <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              {[
+                ['Tổng giá bán', saleTotal],
+                ['Tổng quyết toán nhập', settlementTotal],
+                ['Tổng giá vốn', costTotal],
+                ['Lãi/lỗ tạm tính', profitTotal],
+              ].map(([label, value]) => (
+                <div key={String(label)} className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+                  <div className="text-xs font-semibold text-slate-500">{label}</div>
+                  <div className={`mt-1 text-lg font-black tabular-nums ${label === 'Lãi/lỗ tạm tính' ? (Number(value) >= 0 ? 'text-emerald-700' : 'text-rose-700') : 'text-slate-900'}`}>{new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 0 }).format(Number(value))} đ</div>
+                </div>
+              ))}
             </div>
           )}
 
