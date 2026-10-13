@@ -456,7 +456,6 @@ export function CreateDocumentPage({ type: createType, edit = false }: Props) {
                         showVariant hideOrderCode showPricing />
                     ))}
                     <button type="button" onClick={() => {
-                      const first = items[group.itemIndexes[0]];
                       setItems((current) => [...current, { ...emptyItem(), orderCode: group.orderCode, orderSettlementAmount: group.settlementAmount, salePrice: null, minimumSettlement: null }]);
                       setSaved(false); setError(''); setImportSummary(null);
                     }} className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-dashed border-violet-300 bg-white px-3 py-2 text-sm font-bold text-violet-700 hover:bg-violet-50">
