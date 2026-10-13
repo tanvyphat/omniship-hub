@@ -465,6 +465,7 @@ export function CreateDocumentPage({ type: createType, edit = false }: Props) {
                         return sum + (item.salePrice ?? 0) * item.quantity;
                       }, 0);
                       const settlement = group.settlementAmount;
+                      const hasMinimum = group.itemIndexes.some((idx) => items[idx].minimumSettlement !== null);
                       const money = (value: number) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 }).format(value);
                       return (
                         <div className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-3">
