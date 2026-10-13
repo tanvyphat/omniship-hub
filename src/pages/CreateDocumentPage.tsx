@@ -45,19 +45,21 @@ function hasItemData(item: DocumentItemInput) {
 
 // Quyết toán thuộc về mã đơn hàng: chỉ lưu ở dòng đầu tiên của mỗi mã đơn.
 function normalizeOrderSettlements(rows: DocumentItemInput[]) {
+  const amountByCode = new Map<string, number>();
+  for (const row of rows) {
+    const code = row.orderCode.trim();
+    if (code && !amountByCode.has(code) && row.settlementAmount > 0) {
+      amountByCode.set(code, row.settlementAmount);
+    }
+  }
+
   const seen = new Set<string>();
-  const settled = new Set<string>();
   return rows.map((row) => {
     const code = row.orderCode.trim();
     if (!code) return row;
     if (!seen.has(code)) {
       seen.add(code);
-      if (row.settlementAmount > 0) settled.add(code);
-      return row;
-    }
-    if (!settled.has(code) && row.settlementAmount > 0) {
-      settled.add(code);
-      return { ...row, settlementAmount: 0 };
+      return { ...row, settlementAmount: amountByCode.get(code) ?? 0 };
     }
     return { ...row, settlementAmount: 0 };
   });
