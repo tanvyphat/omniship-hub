@@ -35,10 +35,10 @@ export async function exportDocumentExcel(input: DocumentInput) {
     const sheet = workbook.addWorksheet('PHIEU', {views: [{showGridLines: false}]});
 
     sheet.columns = [
-        {width: 6}, {width: 24}, {width: 32}, {width: 30}, {width: 22}, {width: 18}, {width: 15},
+        {width: 6}, {width: 14}, {width: 24}, {width: 32}, {width: 30}, {width: 22}, {width: 18}, {width: 15},
     ];
 
-    const lastColumn = 'G';
+    const lastColumn = 'H';
     sheet.mergeCells(`A1:${lastColumn}1`);
     sheet.getCell('A1').value = input.type === 'outbound' ? 'PHIẾU XUẤT HÀNG' : 'PHIẾU HOÀN HÀNG';
     sheet.getCell('A1').font = {name: 'Times New Roman', size: 20, bold: true, color: {argb: 'FFFFFF'}};
@@ -49,11 +49,11 @@ export async function exportDocumentExcel(input: DocumentInput) {
     if (includeVariant) {
         sheet.mergeCells('A3:B3');
         sheet.getCell('A3').value = 'Nền tảng';
-        sheet.mergeCells('C3:G3');
+        sheet.mergeCells('C3:H3');
         sheet.getCell('C3').value = platformLabel(input.platform);
         sheet.mergeCells('A4:B4');
         sheet.getCell('A4').value = 'Ngày';
-        sheet.mergeCells('C4:G4');
+        sheet.mergeCells('C4:H4');
         sheet.getCell('C4').value = input.documentDate;
     } else {
         sheet.mergeCells('A3:B3');
@@ -83,7 +83,7 @@ export async function exportDocumentExcel(input: DocumentInput) {
         sheet.getCell(ref).fill = {type: 'pattern', pattern: 'solid', fgColor: {argb: lightBlue}};
     });
 
-    const headers = ['STT', 'Mã đơn hàng', 'Tên sản phẩm', 'SKU', 'Dung tích / Khối lượng', 'Hương / Màu', 'Số lượng'];
+    const headers = ['STT', 'Ngày', 'Mã đơn hàng', 'Tên sản phẩm', 'SKU', 'Dung tích / Khối lượng', 'Hương / Màu', 'Số lượng'];
     const header = sheet.addRow(headers);
     header.eachCell({includeEmpty: true}, (cell) => {
         cell.font = {name: 'Times New Roman', bold: true, color: {argb: 'FFFFFF'}};
@@ -100,7 +100,7 @@ export async function exportDocumentExcel(input: DocumentInput) {
 
     sortedItems.forEach((item, index) => {
         const rowIndex = header.number + 1 + index;
-        const row = sheet.addRow([index + 1, item.orderCode, item.productName, item.sku, item.unit, item.variant || '-', item.quantity]);
+        const row = sheet.addRow([index + 1, input.documentDate, item.orderCode, item.productName, item.sku, item.unit, item.variant || '-', item.quantity]);
 
         row.alignment = {vertical: 'middle', wrapText: true};
 
@@ -111,14 +111,15 @@ export async function exportDocumentExcel(input: DocumentInput) {
         }
 
         row.getCell(1).alignment = {horizontal: 'center', vertical: 'middle'};
-        row.getCell(2).alignment = {horizontal: 'center', vertical: 'middle', wrapText: true};
-        row.getCell(7).alignment = {horizontal: 'center', vertical: 'middle'};
+        row.getCell(2).alignment = {horizontal: 'center', vertical: 'middle'};
+        row.getCell(3).alignment = {horizontal: 'center', vertical: 'middle', wrapText: true};
+        row.getCell(8).alignment = {horizontal: 'center', vertical: 'middle'};
 
         addBorder(row);
 
         if (item.orderCode !== currentOrderCode) {
             if (startMergeRow !== -1 && rowIndex - 1 > startMergeRow) {
-                sheet.mergeCells(startMergeRow, 2, rowIndex - 1, 2);
+                sheet.mergeCells(startMergeRow, 3, rowIndex - 1, 3);
             }
             currentOrderCode = item.orderCode;
             startMergeRow = rowIndex;
@@ -127,15 +128,15 @@ export async function exportDocumentExcel(input: DocumentInput) {
 
     const lastRowIndex = header.number + sortedItems.length;
     if (startMergeRow !== -1 && lastRowIndex > startMergeRow) {
-        sheet.mergeCells(startMergeRow, 2, lastRowIndex, 2);
+        sheet.mergeCells(startMergeRow, 3, lastRowIndex, 3);
     }
 
-    const totalColumn = 'G';
+    const totalColumn = 'H';
     const totalCell = {formula: `SUM(${totalColumn}${header.number + 1}:${totalColumn}${sheet.rowCount})`};
-    const totalRow = sheet.addRow(['', 'TỔNG CỘNG', '', '', '', '', totalCell]);
+    const totalRow = sheet.addRow(['', '', 'TỔNG CỘNG', '', '', '', '', totalCell]);
     totalRow.font = {name: 'Times New Roman', bold: true};
-    totalRow.getCell(2).font = {name: 'Times New Roman', bold: true, color: {argb: navy}};
-    totalRow.getCell(7).font = {name: 'Times New Roman', bold: true, color: {argb: blue}};
+    totalRow.getCell(3).font = {name: 'Times New Roman', bold: true, color: {argb: navy}};
+    totalRow.getCell(8).font = {name: 'Times New Roman', bold: true, color: {argb: blue}};
     addBorder(totalRow);
 
     const footerRow = sheet.rowCount + 2;
