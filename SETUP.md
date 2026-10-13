@@ -19,11 +19,9 @@ Script sẽ tạo:
 
 - `warehouse_documents`: 1 record = 1 phiếu.
 - `warehouse_document_items`: nhiều sản phẩm thuộc 1 phiếu.
-- `marketplace_product_prices`: bảng giá bán, mức thu tối thiểu và giá vốn theo nền tảng + SKU.
-- `marketplace_order_settlements`: tổng tiền quyết toán ước tính/thực tế theo mã đơn.
-- index, RLS chỉ cho ADMIN và RPC tạo/cập nhật phiếu.
-
-Với database OmniShip Hub đã tồn tại, có thể chạy riêng `supabase/migrations/20261012090000_marketplace_settlement.sql` để bổ sung các bảng quyết toán mà không xóa dữ liệu cũ.
+- index cho lịch sử.
+- RLS chỉ cho tài khoản ADMIN đọc dữ liệu.
+- RPC `create_warehouse_document()` để tạo phiếu + các dòng sản phẩm trong một transaction.
 
 ## Bước 3 — Tạo tài khoản ADMIN
 

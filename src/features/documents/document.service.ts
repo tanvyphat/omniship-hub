@@ -31,9 +31,6 @@ interface DocumentItemRow {
   unit: string;
   variant: string | null;
   quantity: number;
-  sale_price: number | null;
-  settlement_amount: number | null;
-  cost_price: number | null;
 }
 
 function toSupabaseError(error: unknown): SupabaseOperationError {
@@ -100,32 +97,7 @@ function buildItems(input: DocumentInput) {
     unit: item.unit.trim(),
     variant: item.variant.trim(),
     quantity: item.quantity,
-    sale_price: item.salePrice,
-    settlement_amount: item.settlementAmount,
-    cost_price: item.costPrice,
   }));
-}
-
-async function saveOrderSettlements(input: DocumentInput) {
-  if (input.type !== 'outbound') return;
-  const seen = new Set<string>();
-  const payouts = input.items.flatMap((item) => {
-    const orderCode = item.orderCode.trim();
-    if (!orderCode || seen.has(orderCode)) return [];
-    seen.add(orderCode);
-    return [{
-      platform: input.platform,
-      order_code: orderCode,
-      payout_amount: Math.max(0, Number(item.settlementAmount) || 0),
-      payout_kind: 'actual',
-      source_file: null,
-    }];
-  });
-  if (!payouts.length) return;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const { error } = await (supabase as any).from('marketplace_order_settlements')
-    .upsert(payouts, { onConflict: 'platform,order_code' });
-  if (error) throw toSupabaseError(error);
 }
 
 export async function createDocument(input: DocumentInput) {
@@ -142,7 +114,6 @@ export async function createDocument(input: DocumentInput) {
   }
 
   if (!data) throw new Error('Supabase không trả về ID phiếu sau khi lưu.');
-  await saveOrderSettlements(input);
   return data as string;
 }
 
@@ -160,7 +131,6 @@ export async function updateDocument(documentId: string, input: DocumentInput) {
   }
 
   if (!data) throw new Error('Supabase không trả về ID phiếu sau khi cập nhật.');
-  await saveOrderSettlements(input);
   return data as string;
 }
 
@@ -179,54 +149,26 @@ export async function fetchDocument(documentId: string): Promise<SavedDocument> 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: rawItems, error: itemError } = await (supabase as any)
       .from('warehouse_document_items')
-      .select('order_code, product_name, sku, unit, variant, quantity, sale_price, settlement_amount, cost_price')
+      .select('order_code, product_name, sku, unit, variant, quantity')
       .eq('document_id', documentId)
       .order('created_at', { ascending: true });
 
   if (itemError) throw toSupabaseError(itemError);
-  const itemRows = (rawItems ?? []) as DocumentItemRow[];
-  const platform = document.platform as Platform;
-  const type = document.type as DocumentType;
-  const orderCodes = [...new Set(itemRows.map((item) => item.order_code.trim()).filter(Boolean))];
-  let payoutByOrder = new Map<string, number>();
-  if (type === 'outbound' && orderCodes.length) {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { data: payouts, error: payoutError } = await (supabase as any)
-      .from('marketplace_order_settlements')
-      .select('order_code, payout_amount')
-      .eq('platform', platform)
-      .in('order_code', orderCodes);
-    if (payoutError) throw toSupabaseError(payoutError);
-    payoutByOrder = new Map((payouts ?? []).map((row: { order_code: string; payout_amount: number }) => [
-      row.order_code.trim(), Number(row.payout_amount ?? 0),
-    ]));
-  }
-  const seenOrderCodes = new Set<string>();
-  const items = itemRows.map((item) => {
-    const code = item.order_code.trim();
-    const isFirstOrderLine = !code || !seenOrderCodes.has(code);
-    if (code) seenOrderCodes.add(code);
-    return {
+  const items = (rawItems ?? []) as DocumentItemRow[];
+
+  return {
+    id: document.id,
+    platform: document.platform as Platform,
+    type: document.type as DocumentType,
+    documentDate: formatDateVN(document.document_date),
+    items: items.map((item) => ({
       orderCode: item.order_code,
       productName: item.product_name,
       sku: item.sku,
       unit: item.unit,
       variant: item.variant ?? '',
       quantity: item.quantity,
-      salePrice: Number(item.sale_price ?? 0),
-      settlementAmount: isFirstOrderLine
-        ? (payoutByOrder.get(code) ?? Number(item.settlement_amount ?? 0))
-        : 0,
-      costPrice: Number(item.cost_price ?? 0),
-    } as DocumentItemInput;
-  });
-
-  return {
-    id: document.id,
-    platform,
-    type,
-    documentDate: formatDateVN(document.document_date),
-    items,
+    } as DocumentItemInput)),
     createdAt: document.created_at,
     updatedAt: document.updated_at,
   };

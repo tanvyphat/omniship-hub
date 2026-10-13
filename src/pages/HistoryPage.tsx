@@ -21,7 +21,6 @@ import { Select } from '../components/Select';
 import { fetchDocument } from '../features/documents/document.service';
 import { useFeatureFlags } from '../features/featureFlags/useFeatureFlags';
 import { fetchHistory } from '../features/history/history.service';
-import { OrderSettlementPanel } from '../features/settlement/OrderSettlementPanel';
 import { formatDateVN } from '../lib/date';
 import { exportDocumentExcel } from '../lib/excel';
 import type { DocumentHistoryItem, DocumentType, Platform } from '../types/document';
@@ -515,7 +514,6 @@ export function HistoryPage() {
                                 </tbody>
                               </table>
                             </div>
-                            {row.type === 'outbound' && <OrderSettlementPanel platform={platform} items={detailById[row.id].items} />}
                           </div>
                         ) : null}
                       </td>

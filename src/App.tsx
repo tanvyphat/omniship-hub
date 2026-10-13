@@ -10,7 +10,6 @@ import { HistoryPage } from './pages/HistoryPage';
 import { LoginPage } from './pages/LoginPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { PlatformPage } from './pages/PlatformPage';
-import { SettlementPage } from './pages/SettlementPage';
 import type { DocumentType } from './types/document';
 
 function CreateDocumentRoute({ type }: { type: DocumentType }) {
@@ -62,7 +61,6 @@ export default function App() {
           <Route path="/warehouse/returns/platform" element={<FeatureRoute feature="returns"><PlatformPage type="return" /></FeatureRoute>} />
           <Route path="/warehouse/returns/create" element={<FeatureRoute feature="returns"><CreateDocumentRoute type="return" /></FeatureRoute>} />
           <Route path="/warehouse/history/:platform" element={<FeatureRoute feature="history"><HistoryPage /></FeatureRoute>} />
-          <Route path="/warehouse/settlement" element={<SettlementPage />} />
           <Route path="/warehouse" element={<Navigate to="/" replace />} />
         </Route>
       </Route>

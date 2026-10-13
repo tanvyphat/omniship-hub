@@ -8,9 +8,6 @@ export interface DocumentItemInput {
   variant: string;
   unit: string;
   quantity: number;
-  salePrice: number;
-  settlementAmount: number;
-  costPrice: number;
 }
 
 export interface DocumentInput {

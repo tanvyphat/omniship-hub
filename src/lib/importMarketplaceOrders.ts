@@ -115,9 +115,6 @@ function parseShopeeRow(row: ExcelJS.Row, headerMap: Map<string, number>) {
       unit: extractCapacity(productName),
       variant,
       quantity,
-      salePrice: 0,
-      settlementAmount: 0,
-      costPrice: 0,
     } satisfies DocumentItemInput,
   };
 }
@@ -140,9 +137,6 @@ function parseTikTokRow(row: ExcelJS.Row, headerMap: Map<string, number>) {
       unit: extractCapacity(productName),
       variant,
       quantity,
-      salePrice: 0,
-      settlementAmount: 0,
-      costPrice: 0,
     } satisfies DocumentItemInput,
   };
 }

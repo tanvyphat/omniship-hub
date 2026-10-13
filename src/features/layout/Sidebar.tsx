@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
-  Calculator,
   ChevronDown,
   History,
   LayoutDashboard,
@@ -272,11 +271,6 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
               ]}
             />
           )}
-
-          <NavLink to="/warehouse/settlement" onClick={onClose} className={({ isActive }) => `group flex cursor-pointer items-center gap-3 rounded-xl px-3 py-3 text-sm font-semibold transition-all duration-300 hover:translate-x-0.5 ${isActive ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-lg shadow-emerald-500/20' : 'text-slate-300 hover:bg-white/10 hover:text-white'}`}>
-            <Calculator className="h-4 w-4 transition-transform duration-300 group-hover:scale-110" />
-            Bảng giá & Quyết toán
-          </NavLink>
 
           {!featureLoading && features.history && (
             <DropdownGroup

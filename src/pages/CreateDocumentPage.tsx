@@ -28,7 +28,7 @@ import { importMarketplaceOrders } from '../lib/importMarketplaceOrders';
 import type { MarketplaceImportResult } from '../lib/importMarketplaceOrders';
 import type { DocumentInput, DocumentItemInput, DocumentType, Platform } from '../types/document';
 
-const emptyItem = (): DocumentItemInput => ({ orderCode: '', productName: '', sku: '', variant: '', unit: '', quantity: 1, salePrice: 0, settlementAmount: 0, costPrice: 0 });
+const emptyItem = (): DocumentItemInput => ({ orderCode: '', productName: '', sku: '', variant: '', unit: '', quantity: 1 });
 
 interface Props {
   type?: DocumentType;
@@ -41,28 +41,6 @@ interface ImportSummary extends MarketplaceImportResult {
 
 function hasItemData(item: DocumentItemInput) {
   return Boolean(item.orderCode.trim() || item.productName.trim() || item.sku.trim() || item.variant.trim() || item.unit.trim());
-}
-
-// Quyết toán thuộc về mã đơn hàng: chỉ lưu ở dòng đầu tiên của mỗi mã đơn.
-function normalizeOrderSettlements(rows: DocumentItemInput[]) {
-  const amountByCode = new Map<string, number>();
-  for (const row of rows) {
-    const code = row.orderCode.trim();
-    if (code && !amountByCode.has(code) && row.settlementAmount > 0) {
-      amountByCode.set(code, row.settlementAmount);
-    }
-  }
-
-  const seen = new Set<string>();
-  return rows.map((row) => {
-    const code = row.orderCode.trim();
-    if (!code) return row;
-    if (!seen.has(code)) {
-      seen.add(code);
-      return { ...row, settlementAmount: amountByCode.get(code) ?? 0 };
-    }
-    return { ...row, settlementAmount: 0 };
-  });
 }
 
 export function CreateDocumentPage({ type: createType, edit = false }: Props) {
@@ -101,7 +79,7 @@ export function CreateDocumentPage({ type: createType, edit = false }: Props) {
           const [day, month, year] = document.documentDate.split('/');
           return `${year}-${month}-${day}`;
         })() : document.documentDate);
-        setItems(document.items.length > 0 ? normalizeOrderSettlements(document.items) : [emptyItem()]);
+        setItems(document.items.length > 0 ? document.items : [emptyItem()]);
         setImportSummary(null);
         setSaved(false);
       })
@@ -118,14 +96,6 @@ export function CreateDocumentPage({ type: createType, edit = false }: Props) {
     () => items.reduce((sum, item) => sum + (Number.isFinite(item.quantity) ? item.quantity : 0), 0),
     [items],
   );
-  const saleTotal = useMemo(() => items.reduce((sum, item) => sum + (item.salePrice || 0) * (item.quantity || 0), 0), [items]);
-  const settlementTotal = useMemo(() => items.reduce((sum, item, index) => {
-    const code = item.orderCode.trim();
-    if (code && items.slice(0, index).some((previous) => previous.orderCode.trim() === code)) return sum;
-    return sum + (item.settlementAmount || 0);
-  }, 0), [items]);
-  const costTotal = useMemo(() => items.reduce((sum, item) => sum + (item.costPrice || 0) * (item.quantity || 0), 0), [items]);
-  const profitTotal = settlementTotal - costTotal;
 
   if (!edit && (!documentType || !platform)) {
     return <Navigate to={createType === 'outbound' ? '/warehouse/outbound/platform' : '/warehouse/returns/platform'} replace />;
@@ -152,49 +122,14 @@ export function CreateDocumentPage({ type: createType, edit = false }: Props) {
   };
 
   function updateItem(index: number, item: DocumentItemInput) {
-    setItems((current) => {
-      const previous = current[index];
-      if (!previous) return current;
-      const next = [...current];
-
-      // Khi đổi mã đơn, chuyển số quyết toán sang dòng kế tiếp còn thuộc mã đơn cũ.
-      if (previous.orderCode.trim() !== item.orderCode.trim()) {
-        const oldCode = previous.orderCode.trim();
-        if (oldCode && previous.settlementAmount > 0) {
-          const nextOldIndex = current.findIndex((row, i) => i !== index && row.orderCode.trim() === oldCode);
-          if (nextOldIndex >= 0) next[nextOldIndex] = { ...next[nextOldIndex], settlementAmount: previous.settlementAmount };
-        }
-        next[index] = { ...item, settlementAmount: 0 };
-        return normalizeOrderSettlements(next);
-      }
-
-      // Sửa tiền quyết toán ở dòng đầu sẽ cập nhật theo mã đơn, không nhân lên theo số sản phẩm.
-      if (previous.settlementAmount !== item.settlementAmount && item.orderCode.trim()) {
-        return current.map((row, i) => {
-          if (row.orderCode.trim() !== item.orderCode.trim()) return i === index ? item : row;
-          const firstIndex = current.findIndex((candidate) => candidate.orderCode.trim() === item.orderCode.trim());
-          return { ...row, settlementAmount: i === firstIndex ? item.settlementAmount : 0 };
-        });
-      }
-
-      next[index] = item;
-      return next;
-    });
+    setItems((current) => current.map((row, i) => i === index ? item : row));
     setImportSummary(null);
     setSaved(false);
     setError('');
   }
 
   function removeItem(index: number) {
-    setItems((current) => {
-      const removed = current[index];
-      const next = current.filter((_, i) => i !== index);
-      if (removed?.orderCode.trim() && removed.settlementAmount > 0) {
-        const promotedIndex = next.findIndex((row) => row.orderCode.trim() === removed.orderCode.trim());
-        if (promotedIndex >= 0) next[promotedIndex] = { ...next[promotedIndex], settlementAmount: removed.settlementAmount };
-      }
-      return normalizeOrderSettlements(next);
-    });
+    setItems((current) => current.filter((_, i) => i !== index));
     setImportSummary(null);
     setSaved(false);
     setError('');
@@ -462,22 +397,6 @@ export function CreateDocumentPage({ type: createType, edit = false }: Props) {
             </div>
           )}
 
-          {documentType === 'outbound' && (
-            <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              {[
-                ['Tổng giá bán', saleTotal],
-                ['Tổng quyết toán các đơn', settlementTotal],
-                ['Tổng giá vốn', costTotal],
-                ['Lãi/lỗ tạm tính', profitTotal],
-              ].map(([label, value]) => (
-                <div key={String(label)} className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
-                  <div className="text-xs font-semibold text-slate-500">{label}</div>
-                  <div className={`mt-1 text-lg font-black tabular-nums ${label === 'Lãi/lỗ tạm tính' ? (Number(value) >= 0 ? 'text-emerald-700' : 'text-rose-700') : 'text-slate-900'}`}>{new Intl.NumberFormat('vi-VN', { maximumFractionDigits: 0 }).format(Number(value))} đ</div>
-                </div>
-              ))}
-            </div>
-          )}
-
           <div className="space-y-3">
             {items.map((item, index) => (
               <ProductRow
@@ -488,8 +407,6 @@ export function CreateDocumentPage({ type: createType, edit = false }: Props) {
                 onRemove={() => removeItem(index)}
                 canRemove={items.length > 1}
                 showVariant
-                showPricing={documentType === 'outbound'}
-                showSettlement={documentType === 'outbound' && (!item.orderCode.trim() || !items.slice(0, index).some((previous) => previous.orderCode.trim() === item.orderCode.trim()))}
               />
             ))}
           </div>

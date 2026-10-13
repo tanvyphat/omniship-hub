@@ -42,18 +42,12 @@ create table if not exists public.warehouse_document_items (
   unit text not null check (char_length(trim(unit)) between 1 and 100),
   variant text not null default '',
   quantity integer not null check (quantity > 0),
-  sale_price numeric(14,2) not null default 0 check (sale_price >= 0),
-  settlement_amount numeric(14,2) not null default 0 check (settlement_amount >= 0),
-  cost_price numeric(14,2) not null default 0 check (cost_price >= 0),
   created_at timestamptz not null default now()
 );
 
 -- Add the new per-product order code to an existing database without losing old data.
 alter table public.warehouse_document_items
-  add column if not exists order_code text not null default '',
-  add column if not exists sale_price numeric(14,2) not null default 0 check (sale_price >= 0),
-  add column if not exists settlement_amount numeric(14,2) not null default 0 check (settlement_amount >= 0),
-  add column if not exists cost_price numeric(14,2) not null default 0 check (cost_price >= 0);
+  add column if not exists order_code text not null default '';
 
 update public.warehouse_document_items as item
 set order_code = document.order_code
@@ -205,13 +199,10 @@ begin
 
     if char_length(v_order_code) = 0 then raise exception 'ORDER_CODE_REQUIRED'; end if;
 
-    insert into public.warehouse_document_items (document_id, order_code, product_name, sku, unit, variant, quantity, sale_price, settlement_amount, cost_price)
+    insert into public.warehouse_document_items (document_id, order_code, product_name, sku, unit, variant, quantity)
     values (
       v_document_id, v_order_code, trim(v_item ->> 'product_name'), trim(v_item ->> 'sku'),
-      trim(v_item ->> 'unit'), coalesce(trim(v_item ->> 'variant'), ''), v_quantity,
-      coalesce(nullif(v_item ->> 'sale_price', '')::numeric, 0),
-      coalesce(nullif(v_item ->> 'settlement_amount', '')::numeric, 0),
-      coalesce(nullif(v_item ->> 'cost_price', '')::numeric, 0)
+      trim(v_item ->> 'unit'), coalesce(trim(v_item ->> 'variant'), ''), v_quantity
     );
   end loop;
 
@@ -254,13 +245,10 @@ begin
     v_quantity := (v_item ->> 'quantity')::integer;
     if char_length(v_order_code) = 0 then raise exception 'ORDER_CODE_REQUIRED'; end if;
 
-    insert into public.warehouse_document_items (document_id, order_code, product_name, sku, unit, variant, quantity, sale_price, settlement_amount, cost_price)
+    insert into public.warehouse_document_items (document_id, order_code, product_name, sku, unit, variant, quantity)
     values (
       p_document_id, v_order_code, trim(v_item ->> 'product_name'), trim(v_item ->> 'sku'),
-      trim(v_item ->> 'unit'), coalesce(trim(v_item ->> 'variant'), ''), v_quantity,
-      coalesce(nullif(v_item ->> 'sale_price', '')::numeric, 0),
-      coalesce(nullif(v_item ->> 'settlement_amount', '')::numeric, 0),
-      coalesce(nullif(v_item ->> 'cost_price', '')::numeric, 0)
+      trim(v_item ->> 'unit'), coalesce(trim(v_item ->> 'variant'), ''), v_quantity
     );
   end loop;
 
@@ -270,104 +258,3 @@ $$;
 
 revoke all on function public.update_warehouse_document(uuid, jsonb, jsonb) from public;
 grant execute on function public.update_warehouse_document(uuid, jsonb, jsonb) to authenticated;
-
--- Marketplace pricing and settlement reconciliation (also available as a standalone migration).
--- OmniShip Hub: marketplace price book and order settlement tracking.
--- Safe additive migration: does not modify or delete warehouse documents/items.
-
-create table if not exists public.marketplace_product_prices (
-  id uuid primary key default gen_random_uuid(),
-  platform text not null check (platform in ('shopee', 'tiktok')),
-  sku text not null check (char_length(trim(sku)) between 1 and 150),
-  product_name text not null check (char_length(trim(product_name)) between 1 and 300),
-  sale_price numeric(14,2) not null check (sale_price >= 0),
-  minimum_payout numeric(14,2) not null check (minimum_payout >= 0),
-  cost_price numeric(14,2) check (cost_price is null or cost_price >= 0),
-  updated_at timestamptz not null default now(),
-  created_at timestamptz not null default now(),
-  unique (platform, sku)
-);
-
-create table if not exists public.marketplace_order_settlements (
-  id uuid primary key default gen_random_uuid(),
-  platform text not null check (platform in ('shopee', 'tiktok')),
-  order_code text not null check (char_length(trim(order_code)) between 1 and 200),
-  payout_amount numeric(14,2) not null check (payout_amount >= 0),
-  payout_kind text not null default 'actual' check (payout_kind in ('estimated', 'actual')),
-  source_file text,
-  updated_at timestamptz not null default now(),
-  created_at timestamptz not null default now(),
-  unique (platform, order_code)
-);
-
-create index if not exists marketplace_product_prices_sku_idx
-  on public.marketplace_product_prices (platform, sku);
-create index if not exists marketplace_order_settlements_order_idx
-  on public.marketplace_order_settlements (platform, order_code);
-
-create or replace function public.set_marketplace_pricing_updated_at()
-returns trigger language plpgsql set search_path = ''
-as $$
-begin
-  new.updated_at = now();
-  return new;
-end;
-$$;
-
-drop trigger if exists trg_marketplace_product_prices_updated_at on public.marketplace_product_prices;
-create trigger trg_marketplace_product_prices_updated_at
-before update on public.marketplace_product_prices
-for each row execute function public.set_marketplace_pricing_updated_at();
-
-drop trigger if exists trg_marketplace_order_settlements_updated_at on public.marketplace_order_settlements;
-create trigger trg_marketplace_order_settlements_updated_at
-before update on public.marketplace_order_settlements
-for each row execute function public.set_marketplace_pricing_updated_at();
-
-alter table public.marketplace_product_prices enable row level security;
-alter table public.marketplace_order_settlements enable row level security;
-
-drop policy if exists "Admin can view marketplace product prices" on public.marketplace_product_prices;
-create policy "Admin can view marketplace product prices"
-  on public.marketplace_product_prices for select to authenticated
-  using ((select public.is_admin()));
-
-drop policy if exists "Admin can insert marketplace product prices" on public.marketplace_product_prices;
-create policy "Admin can insert marketplace product prices"
-  on public.marketplace_product_prices for insert to authenticated
-  with check ((select public.is_admin()));
-
-drop policy if exists "Admin can update marketplace product prices" on public.marketplace_product_prices;
-create policy "Admin can update marketplace product prices"
-  on public.marketplace_product_prices for update to authenticated
-  using ((select public.is_admin()))
-  with check ((select public.is_admin()));
-
-drop policy if exists "Admin can delete marketplace product prices" on public.marketplace_product_prices;
-create policy "Admin can delete marketplace product prices"
-  on public.marketplace_product_prices for delete to authenticated
-  using ((select public.is_admin()));
-
-drop policy if exists "Admin can view marketplace order settlements" on public.marketplace_order_settlements;
-create policy "Admin can view marketplace order settlements"
-  on public.marketplace_order_settlements for select to authenticated
-  using ((select public.is_admin()));
-
-drop policy if exists "Admin can insert marketplace order settlements" on public.marketplace_order_settlements;
-create policy "Admin can insert marketplace order settlements"
-  on public.marketplace_order_settlements for insert to authenticated
-  with check ((select public.is_admin()));
-
-drop policy if exists "Admin can update marketplace order settlements" on public.marketplace_order_settlements;
-create policy "Admin can update marketplace order settlements"
-  on public.marketplace_order_settlements for update to authenticated
-  using ((select public.is_admin()))
-  with check ((select public.is_admin()));
-
-drop policy if exists "Admin can delete marketplace order settlements" on public.marketplace_order_settlements;
-create policy "Admin can delete marketplace order settlements"
-  on public.marketplace_order_settlements for delete to authenticated
-  using ((select public.is_admin()));
-
-grant select, insert, update, delete on public.marketplace_product_prices to authenticated;
-grant select, insert, update, delete on public.marketplace_order_settlements to authenticated;
