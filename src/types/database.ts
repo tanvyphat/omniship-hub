@@ -36,6 +36,9 @@ export interface Database {
           unit: string;
           variant: string;
           quantity: number;
+          order_settlement_amount: number | null;
+          sale_price: number | null;
+          minimum_settlement: number | null;
           created_at: string;
         };
         Insert: {
@@ -47,6 +50,9 @@ export interface Database {
           unit: string;
           variant: string;
           quantity: number;
+          order_settlement_amount?: number | null;
+          sale_price?: number | null;
+          minimum_settlement?: number | null;
           created_at?: string;
         };
         Update: Partial<Database['public']['Tables']['warehouse_document_items']['Insert']>;
