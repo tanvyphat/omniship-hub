@@ -33,7 +33,7 @@ export function ProductRow({ index, item, onChange, onRemove, canRemove, showVar
         </button>
       </div>
 
-      <div className={`grid gap-3 md:items-end ${showPricing ? 'md:grid-cols-2 xl:grid-cols-[1.2fr_1.6fr_0.9fr_1fr_0.9fr_0.7fr_0.9fr_0.9fr_0.9fr_auto]' : showVariant ? 'md:grid-cols-2 xl:grid-cols-[1.35fr_2fr_1.1fr_1.1fr_1fr_0.72fr_auto]' : 'md:grid-cols-2 xl:grid-cols-[1.35fr_2fr_1.1fr_1.1fr_0.72fr_auto]'}`}
+      <div className={`grid gap-3 md:items-end ${showPricing ? 'md:grid-cols-2 xl:grid-cols-[1.2fr_1.6fr_0.9fr_1fr_0.9fr_0.7fr_0.9fr_0.9fr_0.9fr_auto]' : showVariant ? 'md:grid-cols-2 xl:grid-cols-[1.35fr_2fr_1.1fr_1.1fr_1fr_0.72fr_auto]' : 'md:grid-cols-2 xl:grid-cols-[1.35fr_2fr_1.1fr_1.1fr_0.72fr_auto]'}`}>
         <Input label={`Mã đơn ${index + 1}`} required value={item.orderCode} onChange={(e) => onChange({ ...item, orderCode: e.target.value })} placeholder="Mã đơn TikTok / Shopee" />
         <Input label="Tên sản phẩm" required value={item.productName} onChange={(e) => onChange({ ...item, productName: e.target.value })} placeholder="Tên sản phẩm" />
         <Input label="SKU" required value={item.sku} onChange={(e) => onChange({ ...item, sku: e.target.value })} placeholder="SKU" />
