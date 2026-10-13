@@ -42,12 +42,18 @@ create table if not exists public.warehouse_document_items (
   unit text not null check (char_length(trim(unit)) between 1 and 100),
   variant text not null default '',
   quantity integer not null check (quantity > 0),
+  sale_price numeric(14,2) not null default 0 check (sale_price >= 0),
+  settlement_amount numeric(14,2) not null default 0 check (settlement_amount >= 0),
+  cost_price numeric(14,2) not null default 0 check (cost_price >= 0),
   created_at timestamptz not null default now()
 );
 
 -- Add the new per-product order code to an existing database without losing old data.
 alter table public.warehouse_document_items
-  add column if not exists order_code text not null default '';
+  add column if not exists order_code text not null default '',
+  add column if not exists sale_price numeric(14,2) not null default 0 check (sale_price >= 0),
+  add column if not exists settlement_amount numeric(14,2) not null default 0 check (settlement_amount >= 0),
+  add column if not exists cost_price numeric(14,2) not null default 0 check (cost_price >= 0);
 
 update public.warehouse_document_items as item
 set order_code = document.order_code
@@ -199,10 +205,13 @@ begin
 
     if char_length(v_order_code) = 0 then raise exception 'ORDER_CODE_REQUIRED'; end if;
 
-    insert into public.warehouse_document_items (document_id, order_code, product_name, sku, unit, variant, quantity)
+    insert into public.warehouse_document_items (document_id, order_code, product_name, sku, unit, variant, quantity, sale_price, settlement_amount, cost_price)
     values (
       v_document_id, v_order_code, trim(v_item ->> 'product_name'), trim(v_item ->> 'sku'),
-      trim(v_item ->> 'unit'), coalesce(trim(v_item ->> 'variant'), ''), v_quantity
+      trim(v_item ->> 'unit'), coalesce(trim(v_item ->> 'variant'), ''), v_quantity,
+      coalesce(nullif(v_item ->> 'sale_price', '')::numeric, 0),
+      coalesce(nullif(v_item ->> 'settlement_amount', '')::numeric, 0),
+      coalesce(nullif(v_item ->> 'cost_price', '')::numeric, 0)
     );
   end loop;
 
@@ -245,10 +254,13 @@ begin
     v_quantity := (v_item ->> 'quantity')::integer;
     if char_length(v_order_code) = 0 then raise exception 'ORDER_CODE_REQUIRED'; end if;
 
-    insert into public.warehouse_document_items (document_id, order_code, product_name, sku, unit, variant, quantity)
+    insert into public.warehouse_document_items (document_id, order_code, product_name, sku, unit, variant, quantity, sale_price, settlement_amount, cost_price)
     values (
       p_document_id, v_order_code, trim(v_item ->> 'product_name'), trim(v_item ->> 'sku'),
-      trim(v_item ->> 'unit'), coalesce(trim(v_item ->> 'variant'), ''), v_quantity
+      trim(v_item ->> 'unit'), coalesce(trim(v_item ->> 'variant'), ''), v_quantity,
+      coalesce(nullif(v_item ->> 'sale_price', '')::numeric, 0),
+      coalesce(nullif(v_item ->> 'settlement_amount', '')::numeric, 0),
+      coalesce(nullif(v_item ->> 'cost_price', '')::numeric, 0)
     );
   end loop;
 
