@@ -16,16 +16,17 @@ export interface OrderPayout {
   payout_kind: 'estimated' | 'actual';
   source_file?: string | null;
 }
-export interface SettlementLine extends DocumentItemInput {
+export type SettlementLine = Omit<DocumentItemInput, 'salePrice' | 'settlementAmount' | 'costPrice'> & {
   salePrice: number | null;
-  minimumPayout: number | null;
+  settlementAmount: number | null;
   costPrice: number | null;
+  minimumPayout: number | null;
   grossAmount: number | null;
   allocatedPayout: number | null;
   targetAmount: number | null;
   targetDifference: number | null;
   profit: number | null;
-}
+};
 export interface SettlementOrderReport {
   orderCode: string;
   payout: OrderPayout | null;
