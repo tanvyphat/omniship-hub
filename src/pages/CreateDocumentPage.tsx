@@ -475,6 +475,8 @@ export function CreateDocumentPage({ type: createType, edit = false }: Props) {
                             <div className="text-xs font-semibold text-slate-500">Đối chiếu quyết toán</div>
                             {settlement == null ? (
                               <div className="mt-1 text-sm font-bold text-slate-500">Chưa nhập tổng quyết toán</div>
+                            ) : !hasMinimum ? (
+                              <div className="mt-1 text-sm font-bold text-slate-500">Chưa nhập mức tối thiểu sản phẩm</div>
                             ) : settlement >= minimumTotal ? (
                               <div className="mt-1 text-sm font-black text-emerald-700">Đạt mức tối thiểu · dư {money(settlement - minimumTotal)}</div>
                             ) : (
