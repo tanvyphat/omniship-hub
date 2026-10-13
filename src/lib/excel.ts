@@ -131,14 +131,6 @@ export async function exportDocumentExcel(input: DocumentInput) {
         sheet.mergeCells(startMergeRow, 3, lastRowIndex, 3);
     }
 
-    const totalColumn = 'H';
-    const totalCell = {formula: `SUM(${totalColumn}${header.number + 1}:${totalColumn}${sheet.rowCount})`};
-    const totalRow = sheet.addRow(['', '', 'TỔNG CỘNG', '', '', '', '', totalCell]);
-    totalRow.font = {name: 'Times New Roman', bold: true};
-    totalRow.getCell(3).font = {name: 'Times New Roman', bold: true, color: {argb: navy}};
-    totalRow.getCell(8).font = {name: 'Times New Roman', bold: true, color: {argb: blue}};
-    addBorder(totalRow);
-
     const footerRow = sheet.rowCount + 2;
     sheet.mergeCells(`A${footerRow}:${lastColumn}${footerRow}`);
     sheet.getCell(`A${footerRow}`).value = `Xuất file: ${getTodayISO()} · OmniShip Hub`;
