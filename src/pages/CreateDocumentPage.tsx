@@ -344,7 +344,7 @@ export function CreateDocumentPage({ type: createType, edit = false }: Props) {
                 <Layers3 className="h-4.5 w-4.5" />
               </div>
               <div>
-                <h2 className="text-lg font-black text-slate-950">Danh sách sản phẩm</h2>
+                <h2 className="text-lg font-black text-slate-950">Đơn hàng và sản phẩm</h2>
                 <p className="mt-1 text-xs leading-5 text-slate-500">
                   Bắt buộc: mã đơn, tên sản phẩm, SKU, dung tích/khối lượng và số lượng. Một mã đơn có thể xuất hiện ở nhiều dòng.
                 </p>
@@ -391,7 +391,7 @@ export function CreateDocumentPage({ type: createType, edit = false }: Props) {
           <div className="mb-4 flex items-start gap-2 rounded-2xl border border-blue-100 bg-blue-50/60 px-4 py-3 text-xs leading-5 text-blue-800">
             <Info className="mt-0.5 h-4 w-4 shrink-0" />
             <div>
-              <span className="font-bold">Một phiếu = nhiều đơn.</span> Mỗi dòng nhập một mã đơn hàng; cùng một mã đơn có thể xuất hiện nhiều lần nếu đơn đó có nhiều sản phẩm.
+              <span className="font-bold">Một phiếu có thể chứa nhiều đơn hàng.</span> Tạo một nhóm cho mỗi đơn, nhập tổng quyết toán một lần ở đầu nhóm, rồi thêm các dòng sản phẩm bên dưới.
             </div>
           </div>
 
