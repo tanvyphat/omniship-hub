@@ -31,6 +31,9 @@ interface DocumentItemRow {
   unit: string;
   variant: string | null;
   quantity: number;
+  order_settlement_amount: number | null;
+  sale_price: number | null;
+  minimum_settlement: number | null;
 }
 
 function toSupabaseError(error: unknown): SupabaseOperationError {
@@ -97,6 +100,9 @@ function buildItems(input: DocumentInput) {
     unit: item.unit.trim(),
     variant: item.variant.trim(),
     quantity: item.quantity,
+    order_settlement_amount: item.orderSettlementAmount,
+    sale_price: item.salePrice,
+    minimum_settlement: item.minimumSettlement,
   }));
 }
 
@@ -149,7 +155,7 @@ export async function fetchDocument(documentId: string): Promise<SavedDocument> 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: rawItems, error: itemError } = await (supabase as any)
       .from('warehouse_document_items')
-      .select('order_code, product_name, sku, unit, variant, quantity')
+      .select('order_code, product_name, sku, unit, variant, quantity, order_settlement_amount, sale_price, minimum_settlement')
       .eq('document_id', documentId)
       .order('created_at', { ascending: true });
 
@@ -168,6 +174,9 @@ export async function fetchDocument(documentId: string): Promise<SavedDocument> 
       unit: item.unit,
       variant: item.variant ?? '',
       quantity: item.quantity,
+      orderSettlementAmount: item.order_settlement_amount,
+      salePrice: item.sale_price,
+      minimumSettlement: item.minimum_settlement,
     } as DocumentItemInput)),
     createdAt: document.created_at,
     updatedAt: document.updated_at,
