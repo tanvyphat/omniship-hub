@@ -43,6 +43,26 @@ function hasItemData(item: DocumentItemInput) {
   return Boolean(item.orderCode.trim() || item.productName.trim() || item.sku.trim() || item.variant.trim() || item.unit.trim());
 }
 
+// Quyết toán thuộc về mã đơn hàng: chỉ lưu ở dòng đầu tiên của mỗi mã đơn.
+function normalizeOrderSettlements(rows: DocumentItemInput[]) {
+  const seen = new Set<string>();
+  const settled = new Set<string>();
+  return rows.map((row) => {
+    const code = row.orderCode.trim();
+    if (!code) return row;
+    if (!seen.has(code)) {
+      seen.add(code);
+      if (row.settlementAmount > 0) settled.add(code);
+      return row;
+    }
+    if (!settled.has(code) && row.settlementAmount > 0) {
+      settled.add(code);
+      return { ...row, settlementAmount: 0 };
+    }
+    return { ...row, settlementAmount: 0 };
+  });
+}
+
 export function CreateDocumentPage({ type: createType, edit = false }: Props) {
   const navigate = useNavigate();
   const [params] = useSearchParams();
@@ -79,7 +99,7 @@ export function CreateDocumentPage({ type: createType, edit = false }: Props) {
           const [day, month, year] = document.documentDate.split('/');
           return `${year}-${month}-${day}`;
         })() : document.documentDate);
-        setItems(document.items.length > 0 ? document.items : [emptyItem()]);
+        setItems(document.items.length > 0 ? normalizeOrderSettlements(document.items) : [emptyItem()]);
         setImportSummary(null);
         setSaved(false);
       })
@@ -97,7 +117,11 @@ export function CreateDocumentPage({ type: createType, edit = false }: Props) {
     [items],
   );
   const saleTotal = useMemo(() => items.reduce((sum, item) => sum + (item.salePrice || 0) * (item.quantity || 0), 0), [items]);
-  const settlementTotal = useMemo(() => items.reduce((sum, item) => sum + (item.settlementAmount || 0), 0), [items]);
+  const settlementTotal = useMemo(() => items.reduce((sum, item, index) => {
+    const code = item.orderCode.trim();
+    if (code && items.slice(0, index).some((previous) => previous.orderCode.trim() === code)) return sum;
+    return sum + (item.settlementAmount || 0);
+  }, 0), [items]);
   const costTotal = useMemo(() => items.reduce((sum, item) => sum + (item.costPrice || 0) * (item.quantity || 0), 0), [items]);
   const profitTotal = settlementTotal - costTotal;
 
@@ -126,14 +150,49 @@ export function CreateDocumentPage({ type: createType, edit = false }: Props) {
   };
 
   function updateItem(index: number, item: DocumentItemInput) {
-    setItems((current) => current.map((row, i) => i === index ? item : row));
+    setItems((current) => {
+      const previous = current[index];
+      if (!previous) return current;
+      const next = [...current];
+
+      // Khi đổi mã đơn, chuyển số quyết toán sang dòng kế tiếp còn thuộc mã đơn cũ.
+      if (previous.orderCode.trim() !== item.orderCode.trim()) {
+        const oldCode = previous.orderCode.trim();
+        if (oldCode && previous.settlementAmount > 0) {
+          const nextOldIndex = current.findIndex((row, i) => i !== index && row.orderCode.trim() === oldCode);
+          if (nextOldIndex >= 0) next[nextOldIndex] = { ...next[nextOldIndex], settlementAmount: previous.settlementAmount };
+        }
+        next[index] = { ...item, settlementAmount: 0 };
+        return normalizeOrderSettlements(next);
+      }
+
+      // Sửa tiền quyết toán ở dòng đầu sẽ cập nhật theo mã đơn, không nhân lên theo số sản phẩm.
+      if (previous.settlementAmount !== item.settlementAmount && item.orderCode.trim()) {
+        return current.map((row, i) => {
+          if (row.orderCode.trim() !== item.orderCode.trim()) return i === index ? item : row;
+          const firstIndex = current.findIndex((candidate) => candidate.orderCode.trim() === item.orderCode.trim());
+          return { ...row, settlementAmount: i === firstIndex ? item.settlementAmount : 0 };
+        });
+      }
+
+      next[index] = item;
+      return next;
+    });
     setImportSummary(null);
     setSaved(false);
     setError('');
   }
 
   function removeItem(index: number) {
-    setItems((current) => current.filter((_, i) => i !== index));
+    setItems((current) => {
+      const removed = current[index];
+      const next = current.filter((_, i) => i !== index);
+      if (removed?.orderCode.trim() && removed.settlementAmount > 0) {
+        const promotedIndex = next.findIndex((row) => row.orderCode.trim() === removed.orderCode.trim());
+        if (promotedIndex >= 0) next[promotedIndex] = { ...next[promotedIndex], settlementAmount: removed.settlementAmount };
+      }
+      return normalizeOrderSettlements(next);
+    });
     setImportSummary(null);
     setSaved(false);
     setError('');
@@ -405,7 +464,7 @@ export function CreateDocumentPage({ type: createType, edit = false }: Props) {
             <div className="mb-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
               {[
                 ['Tổng giá bán', saleTotal],
-                ['Tổng quyết toán nhập', settlementTotal],
+                ['Tổng quyết toán các đơn', settlementTotal],
                 ['Tổng giá vốn', costTotal],
                 ['Lãi/lỗ tạm tính', profitTotal],
               ].map(([label, value]) => (
@@ -428,6 +487,7 @@ export function CreateDocumentPage({ type: createType, edit = false }: Props) {
                 canRemove={items.length > 1}
                 showVariant
                 showPricing={documentType === 'outbound'}
+                showSettlement={documentType === 'outbound' && (!item.orderCode.trim() || !items.slice(0, index).some((previous) => previous.orderCode.trim() === item.orderCode.trim()))}
               />
             ))}
           </div>
