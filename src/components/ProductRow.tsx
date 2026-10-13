@@ -33,27 +33,39 @@ export function ProductRow({ index, item, onChange, onRemove, canRemove, showVar
         </button>
       </div>
 
-      <div className={`grid gap-3 md:items-end ${showPricing ? 'md:grid-cols-2 xl:grid-cols-[1.2fr_1.6fr_0.9fr_1fr_0.9fr_0.7fr_0.9fr_0.9fr_0.9fr_auto]' : showVariant ? 'md:grid-cols-2 xl:grid-cols-[1.35fr_2fr_1.1fr_1.1fr_1fr_0.72fr_auto]' : 'md:grid-cols-2 xl:grid-cols-[1.35fr_2fr_1.1fr_1.1fr_0.72fr_auto]'}`}>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
         <Input label={`Mã đơn ${index + 1}`} required value={item.orderCode} onChange={(e) => onChange({ ...item, orderCode: e.target.value })} placeholder="Mã đơn TikTok / Shopee" />
         <Input label="Tên sản phẩm" required value={item.productName} onChange={(e) => onChange({ ...item, productName: e.target.value })} placeholder="Tên sản phẩm" />
         <Input label="SKU" required value={item.sku} onChange={(e) => onChange({ ...item, sku: e.target.value })} placeholder="SKU" />
         <Input label="Dung tích / Khối lượng" required value={item.unit} onChange={(e) => onChange({ ...item, unit: e.target.value })} placeholder="VD: 5KG" />
         {showVariant && <Input label="Hương / Màu" value={item.variant} onChange={(e) => onChange({ ...item, variant: e.target.value })} placeholder="Không bắt buộc" />}
-        <Input label="Số lượng" required type="number" min={1} step={1} value={item.quantity} onChange={(e) => onChange({ ...item, quantity: Number(e.target.value) })} />
-        {showPricing && <Input label="Giá bán/đv (VNĐ)" type="number" min={0} step={1} value={item.salePrice} onChange={(e) => onChange({ ...item, salePrice: Number(e.target.value) })} placeholder="0" />}
-        {showPricing && <Input label="Quyết toán dòng (VNĐ)" type="number" min={0} step={1} value={item.settlementAmount} onChange={(e) => onChange({ ...item, settlementAmount: Number(e.target.value) })} placeholder="Nhập tiền thực nhận" />}
-        {showPricing && <Input label="Giá vốn/đv (VNĐ)" type="number" min={0} step={1} value={item.costPrice} onChange={(e) => onChange({ ...item, costPrice: Number(e.target.value) })} placeholder="0" />}
-        <button
-          type="button"
-          disabled={!canRemove}
-          onClick={onRemove}
-          className="hidden h-11 w-11 cursor-pointer place-items-center rounded-xl border border-slate-200 bg-white text-slate-400 transition-all duration-200 hover:-translate-y-0.5 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-30 md:grid"
-          aria-label={`Xóa dòng ${index + 1}`}
-          title={`Xóa dòng ${index + 1}`}
-        >
-          <Trash2 className="h-4 w-4" />
-        </button>
+        <div className="flex items-end gap-2">
+          <div className="min-w-0 flex-1">
+            <Input label="Số lượng" required type="number" min={1} step={1} value={item.quantity} onChange={(e) => onChange({ ...item, quantity: Number(e.target.value) })} />
+          </div>
+          <button
+            type="button"
+            disabled={!canRemove}
+            onClick={onRemove}
+            className="hidden h-11 w-11 shrink-0 cursor-pointer place-items-center rounded-xl border border-slate-200 bg-white text-slate-400 transition-all duration-200 hover:-translate-y-0.5 hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-30 md:grid"
+            aria-label={`Xóa dòng ${index + 1}`}
+            title={`Xóa dòng ${index + 1}`}
+          >
+            <Trash2 className="h-4 w-4" />
+          </button>
+        </div>
       </div>
+
+      {showPricing && (
+        <div className="mt-5 border-t border-slate-200 pt-4">
+          <div className="mb-3 text-sm font-bold text-slate-700">Giá bán & quyết toán</div>
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            <Input label="Giá bán/đv (VNĐ)" type="number" min={0} step={1} value={item.salePrice} onChange={(e) => onChange({ ...item, salePrice: Number(e.target.value) })} placeholder="0" />
+            <Input label="Quyết toán dòng (VNĐ)" type="number" min={0} step={1} value={item.settlementAmount} onChange={(e) => onChange({ ...item, settlementAmount: Number(e.target.value) })} placeholder="Nhập tiền thực nhận" />
+            <Input label="Giá vốn/đv (VNĐ)" type="number" min={0} step={1} value={item.costPrice} onChange={(e) => onChange({ ...item, costPrice: Number(e.target.value) })} placeholder="0" />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
