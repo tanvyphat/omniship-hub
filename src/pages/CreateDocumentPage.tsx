@@ -107,7 +107,7 @@ export function CreateDocumentPage({ type: createType, edit = false }: Props) {
       if (group) {
         group.itemIndexes.push(index);
       } else {
-        groups.set(key, { key, orderCode: item.orderCode, itemIndexes: [index], settlementAmount: item.orderSettlementAmount ?? null });
+        groups.set(key, { key: `group:${index}`, orderCode: item.orderCode, itemIndexes: [index], settlementAmount: item.orderSettlementAmount ?? null });
       }
     });
     return Array.from(groups.values());
