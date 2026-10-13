@@ -226,26 +226,18 @@ export async function exportDocumentExcel(input: DocumentInput) {
     // ==========================================
     const detail = workbook.addWorksheet('CHI_TIET_DATA', {views: [{showGridLines: false}]});
     detail.columns = [
-        {header: 'STT', key: 'no', width: 8},
-        {header: 'Nền tảng', key: 'platform', width: 18},
-        {header: 'Ngày', key: 'date', width: 16},
-        {header: 'Mã đơn hàng', key: 'order', width: 24},
-        {header: 'Tên sản phẩm', key: 'product', width: 36},
-        {header: 'SKU', key: 'sku', width: 20},
-        {header: 'Dung tích / Khối lượng', key: 'unit', width: 24},
-        {header: 'Hương / Màu', key: 'variant', width: 20},
-        {header: 'Số lượng', key: 'qty', width: 12},
+        {header: 'STT', key: 'no', width: 8}, {header: 'Ngày', key: 'date', width: 16},
+        {header: 'Nền tảng', key: 'platform', width: 18}, {header: 'Loại phiếu', key: 'type', width: 18},
+        {header: 'Mã đơn hàng', key: 'order', width: 24}, {header: 'Tên sản phẩm', key: 'product', width: 36},
+        {header: 'SKU', key: 'sku', width: 20}, {header: 'Dung tích / Khối lượng', key: 'unit', width: 24},
+        {header: 'Hương / Màu', key: 'variant', width: 20}, {header: 'Số lượng', key: 'qty', width: 12},
     ];
-
-    // Gom các dòng cùng mã đơn hàng đứng cạnh nhau để có thể gộp ô mã đơn.
-    const detailItems = [...input.items].sort((a, b) =>
-        (a.orderCode || '').localeCompare(b.orderCode || '', 'vi')
-    );
-    detailItems.forEach((item, index) => {
+    input.items.forEach((item, index) => {
         detail.addRow({
             no: index + 1,
-            platform: platformLabel(input.platform),
             date: input.documentDate,
+            platform: platformLabel(input.platform),
+            type: input.type === 'outbound' ? 'Xuất hàng' : 'Hoàn hàng',
             order: item.orderCode,
             product: item.productName,
             sku: item.sku,
@@ -254,21 +246,6 @@ export async function exportDocumentExcel(input: DocumentInput) {
             qty: item.quantity,
         });
     });
-
-    // Gộp ô Mã đơn hàng cho các dòng sản phẩm thuộc cùng một đơn.
-    let detailMergeStart = 2;
-    let detailCurrentOrder = detailItems[0]?.orderCode ?? '';
-    for (let i = 1; i <= detailItems.length; i += 1) {
-        const nextOrder = i < detailItems.length ? detailItems[i].orderCode : undefined;
-        if (i === detailItems.length || nextOrder !== detailCurrentOrder) {
-            const mergeEnd = i + 1;
-            if (mergeEnd > detailMergeStart) {
-                detail.mergeCells(detailMergeStart, 4, mergeEnd, 4);
-            }
-            detailMergeStart = i + 2;
-            detailCurrentOrder = nextOrder ?? '';
-        }
-    }
 
     const detailHeader = detail.getRow(1);
     detailHeader.eachCell({includeEmpty: true}, (cell) => {
