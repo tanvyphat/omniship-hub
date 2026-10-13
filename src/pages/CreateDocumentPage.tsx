@@ -455,6 +455,34 @@ export function CreateDocumentPage({ type: createType, edit = false }: Props) {
                         onRemove={() => removeItem(itemIndex)} canRemove={items.length > 1}
                         showVariant hideOrderCode showPricing />
                     ))}
+                    {(() => {
+                      const minimumTotal = group.itemIndexes.reduce((sum, idx) => {
+                        const item = items[idx];
+                        return sum + (item.minimumSettlement ?? 0) * item.quantity;
+                      }, 0);
+                      const saleTotal = group.itemIndexes.reduce((sum, idx) => {
+                        const item = items[idx];
+                        return sum + (item.salePrice ?? 0) * item.quantity;
+                      }, 0);
+                      const settlement = group.settlementAmount;
+                      const money = (value: number) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 }).format(value);
+                      return (
+                        <div className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-3">
+                          <div><div className="text-xs font-semibold text-slate-500">Tổng giá bán theo số lượng</div><div className="mt-1 font-black text-slate-800">{money(saleTotal)}</div></div>
+                          <div><div className="text-xs font-semibold text-slate-500">Mức thu tối thiểu của đơn</div><div className="mt-1 font-black text-slate-800">{money(minimumTotal)}</div></div>
+                          <div>
+                            <div className="text-xs font-semibold text-slate-500">Đối chiếu quyết toán</div>
+                            {settlement == null ? (
+                              <div className="mt-1 text-sm font-bold text-slate-500">Chưa nhập tổng quyết toán</div>
+                            ) : settlement >= minimumTotal ? (
+                              <div className="mt-1 text-sm font-black text-emerald-700">Đạt mức tối thiểu · dư {money(settlement - minimumTotal)}</div>
+                            ) : (
+                              <div className="mt-1 text-sm font-black text-rose-700">Thiếu {money(minimumTotal - settlement)} so với mức tối thiểu</div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })()}
                     <button type="button" onClick={() => {
                       setItems((current) => [...current, { ...emptyItem(), orderCode: group.orderCode, orderSettlementAmount: group.settlementAmount, salePrice: null, minimumSettlement: null }]);
                       setSaved(false); setError(''); setImportSummary(null);
