@@ -19,6 +19,7 @@ import { Navigate, useNavigate, useParams, useSearchParams } from 'react-router-
 import { Button } from '../components/Button';
 import { PageHeader } from '../components/PageHeader';
 import { ProductRow } from '../components/ProductRow';
+import { Input } from '../components/Input';
 import { Select } from '../components/Select';
 import { createDocument, fetchDocument, getDocumentSaveErrorMessage, updateDocument } from '../features/documents/document.service';
 import { validateDocument } from '../features/documents/document.validation';
@@ -28,7 +29,7 @@ import { importMarketplaceOrders } from '../lib/importMarketplaceOrders';
 import type { MarketplaceImportResult } from '../lib/importMarketplaceOrders';
 import type { DocumentInput, DocumentItemInput, DocumentType, Platform } from '../types/document';
 
-const emptyItem = (): DocumentItemInput => ({ orderCode: '', productName: '', sku: '', variant: '', unit: '', quantity: 1 });
+const emptyItem = (): DocumentItemInput => ({ orderCode: '', productName: '', sku: '', variant: '', unit: '', quantity: 1, orderSettlementAmount: null, salePrice: null, minimumSettlement: null });
 
 interface Props {
   type?: DocumentType;
@@ -96,6 +97,21 @@ export function CreateDocumentPage({ type: createType, edit = false }: Props) {
     () => items.reduce((sum, item) => sum + (Number.isFinite(item.quantity) ? item.quantity : 0), 0),
     [items],
   );
+
+  const orderGroups = useMemo(() => {
+    const groups = new Map<string, { key: string; orderCode: string; itemIndexes: number[]; settlementAmount: number | null }>();
+    items.forEach((item, index) => {
+      const orderCode = item.orderCode.trim();
+      const key = orderCode ? `order:${orderCode}` : `empty:${index}`;
+      const group = groups.get(key);
+      if (group) {
+        group.itemIndexes.push(index);
+      } else {
+        groups.set(key, { key: `group:${index}`, orderCode: item.orderCode, itemIndexes: [index], settlementAmount: item.orderSettlementAmount ?? null });
+      }
+    });
+    return Array.from(groups.values());
+  }, [items]);
 
   if (!edit && (!documentType || !platform)) {
     return <Navigate to={createType === 'outbound' ? '/warehouse/outbound/platform' : '/warehouse/returns/platform'} replace />;
@@ -328,7 +344,7 @@ export function CreateDocumentPage({ type: createType, edit = false }: Props) {
                 <Layers3 className="h-4.5 w-4.5" />
               </div>
               <div>
-                <h2 className="text-lg font-black text-slate-950">Danh sách sản phẩm</h2>
+                <h2 className="text-lg font-black text-slate-950">Đơn hàng và sản phẩm</h2>
                 <p className="mt-1 text-xs leading-5 text-slate-500">
                   Bắt buộc: mã đơn, tên sản phẩm, SKU, dung tích/khối lượng và số lượng. Một mã đơn có thể xuất hiện ở nhiều dòng.
                 </p>
@@ -375,7 +391,7 @@ export function CreateDocumentPage({ type: createType, edit = false }: Props) {
           <div className="mb-4 flex items-start gap-2 rounded-2xl border border-blue-100 bg-blue-50/60 px-4 py-3 text-xs leading-5 text-blue-800">
             <Info className="mt-0.5 h-4 w-4 shrink-0" />
             <div>
-              <span className="font-bold">Một phiếu = nhiều đơn.</span> Mỗi dòng nhập một mã đơn hàng; cùng một mã đơn có thể xuất hiện nhiều lần nếu đơn đó có nhiều sản phẩm.
+              <span className="font-bold">Một phiếu có thể chứa nhiều đơn hàng.</span> Tạo một nhóm cho mỗi đơn, nhập tổng quyết toán một lần ở đầu nhóm, rồi thêm các dòng sản phẩm bên dưới.
             </div>
           </div>
 
@@ -397,28 +413,108 @@ export function CreateDocumentPage({ type: createType, edit = false }: Props) {
             </div>
           )}
 
-          <div className="space-y-3">
-            {items.map((item, index) => (
-              <ProductRow
-                key={`${index}-${item.sku}`}
-                index={index}
-                item={item}
-                onChange={(next) => updateItem(index, next)}
-                onRemove={() => removeItem(index)}
-                canRemove={items.length > 1}
-                showVariant
-              />
-            ))}
-          </div>
-
-          <button
-            type="button"
-            onClick={addItem}
-            className="group mt-4 inline-flex cursor-pointer items-center gap-2 rounded-xl border border-dashed border-violet-300 bg-violet-50/50 px-4 py-2.5 text-sm font-bold text-violet-700 transition-all duration-300 hover:-translate-y-0.5 hover:border-violet-400 hover:bg-violet-100 hover:shadow-md hover:shadow-violet-100 active:scale-[0.98]"
-          >
-            <Plus className="h-4 w-4 transition-transform duration-300 group-hover:rotate-90" />
-            Thêm sản phẩm
-          </button>
+          {documentType === 'outbound' ? (
+            <div className="space-y-5">
+              {orderGroups.map((group, groupIndex) => (
+                <section key={group.key} className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50/70">
+                  <div className="grid gap-4 border-b border-slate-200 bg-white p-4 md:grid-cols-[1fr_1fr_auto] md:items-end">
+                    <div className="flex items-center gap-2 md:col-span-3">
+                      <div className="grid h-8 w-8 place-items-center rounded-lg bg-violet-100 text-sm font-black text-violet-700">{groupIndex + 1}</div>
+                      <div>
+                        <h3 className="font-black text-slate-900">Đơn hàng {groupIndex + 1}</h3>
+                        <p className="text-xs text-slate-500">{group.itemIndexes.length} dòng sản phẩm</p>
+                      </div>
+                    </div>
+                    <Input label="Mã đơn hàng" required value={group.orderCode}
+                      onChange={(e) => {
+                        const nextCode = e.target.value;
+                        setItems((current) => current.map((row, idx) => group.itemIndexes.includes(idx) ? { ...row, orderCode: nextCode } : row));
+                        setSaved(false); setError(''); setImportSummary(null);
+                      }} placeholder="Mã đơn TikTok / Shopee" />
+                    <Input label="Tổng quyết toán đơn hàng (₫)" type="number" min={0} step={1}
+                      value={group.settlementAmount == null ? '' : String(group.settlementAmount)}
+                      onChange={(e) => {
+                        const amount = e.target.value === '' ? null : Number(e.target.value);
+                        setItems((current) => current.map((row, idx) => group.itemIndexes.includes(idx) ? { ...row, orderSettlementAmount: amount } : row));
+                        setSaved(false); setError('');
+                      }} placeholder="Nhập số tiền sàn quyết toán cho cả đơn" />
+                    <button type="button" onClick={() => {
+                      setItems((current) => current.filter((_, idx) => !group.itemIndexes.includes(idx)).length
+                        ? current.filter((_, idx) => !group.itemIndexes.includes(idx))
+                        : [emptyItem()]);
+                      setSaved(false); setError('');
+                    }} disabled={orderGroups.length === 1}
+                      className="h-11 cursor-pointer rounded-xl border border-rose-200 px-3 text-sm font-bold text-rose-600 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-30">
+                      Xóa đơn
+                    </button>
+                  </div>
+                  <div className="space-y-3 p-4">
+                    {group.itemIndexes.map((itemIndex, rowIndex) => (
+                      <ProductRow key={`${itemIndex}-${items[itemIndex].sku}`} index={rowIndex} item={items[itemIndex]}
+                        onChange={(next) => updateItem(itemIndex, next)}
+                        onRemove={() => removeItem(itemIndex)} canRemove={items.length > 1}
+                        showVariant hideOrderCode showPricing />
+                    ))}
+                    {(() => {
+                      const minimumTotal = group.itemIndexes.reduce((sum, idx) => {
+                        const item = items[idx];
+                        return sum + (item.minimumSettlement ?? 0) * item.quantity;
+                      }, 0);
+                      const saleTotal = group.itemIndexes.reduce((sum, idx) => {
+                        const item = items[idx];
+                        return sum + (item.salePrice ?? 0) * item.quantity;
+                      }, 0);
+                      const settlement = group.settlementAmount;
+                      const hasMinimum = group.itemIndexes.some((idx) => items[idx].minimumSettlement !== null);
+                      const money = (value: number) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 }).format(value);
+                      return (
+                        <div className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-3">
+                          <div><div className="text-xs font-semibold text-slate-500">Tổng giá bán theo số lượng</div><div className="mt-1 font-black text-slate-800">{money(saleTotal)}</div></div>
+                          <div><div className="text-xs font-semibold text-slate-500">Mức thu tối thiểu của đơn</div><div className="mt-1 font-black text-slate-800">{money(minimumTotal)}</div></div>
+                          <div>
+                            <div className="text-xs font-semibold text-slate-500">Đối chiếu quyết toán</div>
+                            {settlement == null ? (
+                              <div className="mt-1 text-sm font-bold text-slate-500">Chưa nhập tổng quyết toán</div>
+                            ) : !hasMinimum ? (
+                              <div className="mt-1 text-sm font-bold text-slate-500">Chưa nhập mức tối thiểu sản phẩm</div>
+                            ) : settlement >= minimumTotal ? (
+                              <div className="mt-1 text-sm font-black text-emerald-700">Đạt mức tối thiểu · dư {money(settlement - minimumTotal)}</div>
+                            ) : (
+                              <div className="mt-1 text-sm font-black text-rose-700">Thiếu {money(minimumTotal - settlement)} so với mức tối thiểu</div>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })()}
+                    <button type="button" onClick={() => {
+                      setItems((current) => [...current, { ...emptyItem(), orderCode: group.orderCode, orderSettlementAmount: group.settlementAmount, salePrice: null, minimumSettlement: null }]);
+                      setSaved(false); setError(''); setImportSummary(null);
+                    }} className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-dashed border-violet-300 bg-white px-3 py-2 text-sm font-bold text-violet-700 hover:bg-violet-50">
+                      <Plus className="h-4 w-4" /> Thêm sản phẩm vào đơn này
+                    </button>
+                  </div>
+                </section>
+              ))}
+              <button type="button" onClick={addItem}
+                className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-dashed border-blue-300 bg-blue-50 px-4 py-3 text-sm font-bold text-blue-700 hover:bg-blue-100">
+                <Plus className="h-4 w-4" /> Tạo đơn hàng mới
+              </button>
+            </div>
+          ) : (
+            <>
+              <div className="space-y-3">
+                {items.map((item, index) => (
+                  <ProductRow key={`${index}-${item.sku}`} index={index} item={item}
+                    onChange={(next) => updateItem(index, next)} onRemove={() => removeItem(index)}
+                    canRemove={items.length > 1} showVariant />
+                ))}
+              </div>
+              <button type="button" onClick={addItem}
+                className="group mt-4 inline-flex cursor-pointer items-center gap-2 rounded-xl border border-dashed border-violet-300 bg-violet-50/50 px-4 py-2.5 text-sm font-bold text-violet-700 hover:border-violet-400 hover:bg-violet-100">
+                <Plus className="h-4 w-4" /> Thêm sản phẩm
+              </button>
+            </>
+          )}
         </div>
 
         {(error || saved) && (
