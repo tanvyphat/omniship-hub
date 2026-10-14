@@ -58,8 +58,12 @@ export function FeatureFlagProvider({ children }: { children: ReactNode }) {
   const [error, setError] = useState('');
   const [updatingFeature, setUpdatingFeature] = useState<FeatureKey | null>(null);
 
+  // Depend on authentication state, not the whole Session object.
+  // Supabase refreshes the Session object periodically; making refresh depend on
+  // that object would toggle loading and unmount protected forms unnecessarily.
+  const hasSession = Boolean(session);
   const refresh = useCallback(async () => {
-    if (!session) {
+    if (!hasSession) {
       setFeatures(DEFAULT_FEATURE_FLAGS);
       setLoading(false);
       setConfigured(true);
@@ -87,7 +91,7 @@ export function FeatureFlagProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoading(false);
     }
-  }, [session]);
+  }, [hasSession]);
 
   useEffect(() => {
     if (authLoading) return;
