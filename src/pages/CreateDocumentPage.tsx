@@ -29,7 +29,7 @@ import { importMarketplaceOrders } from '../lib/importMarketplaceOrders';
 import type { MarketplaceImportResult } from '../lib/importMarketplaceOrders';
 import type { DocumentInput, DocumentItemInput, DocumentType, Platform } from '../types/document';
 
-const emptyItem = (): DocumentItemInput => ({ orderCode: '', productName: '', sku: '', variant: '', unit: '', quantity: 1, orderSettlementAmount: null, salePrice: null, minimumSettlement: null });
+const emptyItem = (): DocumentItemInput => ({ orderGroupId: `draft:${crypto.randomUUID()}`, orderCode: '', productName: '', sku: '', variant: '', unit: '', quantity: 1, orderSettlementAmount: null, salePrice: null, minimumSettlement: null });
 
 interface Props {
   type?: DocumentType;
@@ -102,7 +102,8 @@ export function CreateDocumentPage({ type: createType, edit = false }: Props) {
     const groups = new Map<string, { key: string; orderCode: string; itemIndexes: number[]; settlementAmount: number | null }>();
     items.forEach((item, index) => {
       const orderCode = item.orderCode.trim();
-      const key = orderCode ? `order:${orderCode}` : `empty:${index}`;
+      // Keep newly-created blank orders separate. Legacy/imported rows still group by order code.
+      const key = item.orderGroupId || (orderCode ? `order:${orderCode}` : `empty:${index}`);
       const group = groups.get(key);
       if (group) {
         group.itemIndexes.push(index);
@@ -428,14 +429,19 @@ export function CreateDocumentPage({ type: createType, edit = false }: Props) {
                     <Input label="Mã đơn hàng" required value={group.orderCode}
                       onChange={(e) => {
                         const nextCode = e.target.value;
-                        setItems((current) => current.map((row, idx) => group.itemIndexes.includes(idx) ? { ...row, orderCode: nextCode } : row));
+                        const nextGroupId = nextCode.trim() ? `order:${nextCode.trim()}` : group.key;
+                        setItems((current) => current.map((row, idx) => group.itemIndexes.includes(idx)
+                          ? { ...row, orderCode: nextCode, orderGroupId: nextGroupId }
+                          : row));
                         setSaved(false); setError(''); setImportSummary(null);
                       }} placeholder="Mã đơn TikTok / Shopee" />
                     <Input label="Tổng quyết toán đơn hàng (₫)" type="number" min={0} step={1}
                       value={group.settlementAmount == null ? '' : String(group.settlementAmount)}
                       onChange={(e) => {
                         const amount = e.target.value === '' ? null : Number(e.target.value);
-                        setItems((current) => current.map((row, idx) => group.itemIndexes.includes(idx) ? { ...row, orderSettlementAmount: amount } : row));
+                        setItems((current) => current.map((row, idx) => group.itemIndexes.includes(idx)
+                          ? { ...row, orderGroupId: group.key, orderSettlementAmount: amount }
+                          : row));
                         setSaved(false); setError('');
                       }} placeholder="Nhập số tiền sàn quyết toán cho cả đơn" />
                     <button type="button" onClick={() => {
@@ -487,7 +493,7 @@ export function CreateDocumentPage({ type: createType, edit = false }: Props) {
                       );
                     })()}
                     <button type="button" onClick={() => {
-                      setItems((current) => [...current, { ...emptyItem(), orderCode: group.orderCode, orderSettlementAmount: group.settlementAmount, salePrice: null, minimumSettlement: null }]);
+                      setItems((current) => [...current, { ...emptyItem(), orderGroupId: group.key, orderCode: group.orderCode, orderSettlementAmount: group.settlementAmount, salePrice: null, minimumSettlement: null }]);
                       setSaved(false); setError(''); setImportSummary(null);
                     }} className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-dashed border-violet-300 bg-white px-3 py-2 text-sm font-bold text-violet-700 hover:bg-violet-50">
                       <Plus className="h-4 w-4" /> Thêm sản phẩm vào đơn này
