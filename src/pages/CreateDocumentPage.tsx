@@ -44,6 +44,31 @@ function hasItemData(item: DocumentItemInput) {
   return Boolean(item.orderCode.trim() || item.productName.trim() || item.sku.trim() || item.variant.trim() || item.unit.trim());
 }
 
+interface LocalDocumentDraft {
+  documentDate: string;
+  items: DocumentItemInput[];
+  savedAt: string;
+}
+
+function readLocalDraft(key: string | null): LocalDocumentDraft | null {
+  if (!key) return null;
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return null;
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return null;
+    const draft = parsed as Partial<LocalDocumentDraft>;
+    if (typeof draft.documentDate !== 'string' || !Array.isArray(draft.items) || draft.items.length === 0) return null;
+    return {
+      documentDate: draft.documentDate,
+      items: draft.items as DocumentItemInput[],
+      savedAt: typeof draft.savedAt === 'string' ? draft.savedAt : '',
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function CreateDocumentPage({ type: createType, edit = false }: Props) {
   const navigate = useNavigate();
   const [params] = useSearchParams();
@@ -51,11 +76,17 @@ export function CreateDocumentPage({ type: createType, edit = false }: Props) {
   const editId = edit ? routeId : undefined;
   const rawPlatform = params.get('platform');
   const createPlatform: Platform | null = rawPlatform === 'tiktok' || rawPlatform === 'shopee' ? rawPlatform : null;
+  const draftStorageKey = !edit && createType && createPlatform
+    ? `omniship-hub:draft:${createType}:${createPlatform}`
+    : null;
+  const initialDraft = useMemo(() => readLocalDraft(draftStorageKey), [draftStorageKey]);
 
   const [documentType, setDocumentType] = useState<DocumentType | null>(edit ? null : createType ?? null);
   const [platform, setPlatform] = useState<Platform | null>(edit ? null : createPlatform);
-  const [documentDate, setDocumentDate] = useState(getTodayISO());
-  const [items, setItems] = useState<DocumentItemInput[]>([emptyItem()]);
+  const [documentDate, setDocumentDate] = useState(() => initialDraft?.documentDate ?? getTodayISO());
+  const [items, setItems] = useState<DocumentItemInput[]>(() => initialDraft?.items ?? [emptyItem()]);
+  const [draftRestored, setDraftRestored] = useState(() => Boolean(initialDraft));
+  const [draftStatus, setDraftStatus] = useState('');
   const [loadingDocument, setLoadingDocument] = useState(edit);
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -92,6 +123,35 @@ export function CreateDocumentPage({ type: createType, edit = false }: Props) {
       });
     return () => { active = false; };
   }, [edit, editId]);
+
+  useEffect(() => {
+    if (!draftStorageKey || edit || loadingDocument || !documentType || !platform || saved) return;
+
+    const hasDraftContent = items.some((item) =>
+      hasItemData(item)
+      || item.salePrice !== null
+      || item.minimumSettlement !== null
+      || item.orderSettlementAmount !== null,
+    ) || documentDate !== getTodayISO();
+
+    try {
+      if (!hasDraftContent) {
+        window.localStorage.removeItem(draftStorageKey);
+        setDraftStatus('');
+        return;
+      }
+
+      const draft: LocalDocumentDraft = {
+        documentDate,
+        items,
+        savedAt: new Date().toISOString(),
+      };
+      window.localStorage.setItem(draftStorageKey, JSON.stringify(draft));
+      setDraftStatus('Đã tự lưu bản nháp trên thiết bị này');
+    } catch {
+      setDraftStatus('Không thể tự lưu bản nháp; hãy kiểm tra dung lượng lưu trữ của trình duyệt');
+    }
+  }, [draftStorageKey, edit, loadingDocument, documentType, platform, documentDate, items, saved]);
 
   const totalQuantity = useMemo(
     () => items.reduce((sum, item) => sum + (Number.isFinite(item.quantity) ? item.quantity : 0), 0),
@@ -166,6 +226,11 @@ export function CreateDocumentPage({ type: createType, edit = false }: Props) {
   function confirmReset() {
     setItems([emptyItem()]);
     setDocumentDate(getTodayISO());
+    if (draftStorageKey) {
+      try { window.localStorage.removeItem(draftStorageKey); } catch { /* Ignore storage errors during reset. */ }
+    }
+    setDraftRestored(false);
+    setDraftStatus('');
     setImportSummary(null);
     setSaved(false);
     setError('');
@@ -206,8 +271,16 @@ export function CreateDocumentPage({ type: createType, edit = false }: Props) {
     }
     setSaving(true);
     try {
-      if (editId) await updateDocument(editId, input);
-      else await createDocument(input);
+      if (editId) {
+        await updateDocument(editId, input);
+      } else {
+        await createDocument(input);
+        if (draftStorageKey) {
+          try { window.localStorage.removeItem(draftStorageKey); } catch { /* The saved document is already safe in Supabase. */ }
+        }
+        setDraftRestored(false);
+        setDraftStatus('Phiếu đã lưu thành công; bản nháp tạm đã được xóa');
+      }
       setSaved(true);
     } catch (err) {
       setSaved(false);
@@ -249,6 +322,29 @@ export function CreateDocumentPage({ type: createType, edit = false }: Props) {
 
   return (
     <div className="space-y-5">
+      {!edit && (draftRestored || draftStatus || saved) && (
+        <div
+          role="status"
+          aria-live="polite"
+          className={`flex items-start gap-2 rounded-xl border px-4 py-3 text-sm ${
+            saved
+              ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
+              : draftRestored
+                ? 'border-blue-200 bg-blue-50 text-blue-800'
+                : 'border-slate-200 bg-white text-slate-600'
+          }`}
+        >
+          {saved ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" /> : <Info className="mt-0.5 h-4 w-4 shrink-0" />}
+          <span>
+            {saved
+              ? 'Phiếu đã được lưu vào hệ thống. Bản nháp trên thiết bị đã được xóa.'
+              : draftRestored
+                ? 'Đã khôi phục bản nháp chưa lưu từ thiết bị này. Hệ thống sẽ tiếp tục tự lưu khi bạn chỉnh sửa.'
+                : draftStatus}
+          </span>
+        </div>
+      )}
+
       <PageHeader
         eyebrow={editId ? 'Edit document' : 'Step 2 / 2'}
         title={editId ? 'Chỉnh sửa phiếu' : (documentType === 'outbound' ? 'Thông tin phiếu xuất' : 'Thông tin phiếu hoàn')}
