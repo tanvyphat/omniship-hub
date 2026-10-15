@@ -401,7 +401,6 @@ export async function exportHistoryDocumentsExcel(inputs: DocumentInput[]) {
             globalRow += 1;
 
             const items = [...input.items].sort((a, b) => (a.orderCode || '').localeCompare(b.orderCode || ''));
-            const firstDataRow = globalRow;
             items.forEach((item, index) => {
                 const values = [
                     index + 1, date.split('-').reverse().join('/'), platformLabel(input.platform),
