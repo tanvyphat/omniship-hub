@@ -361,11 +361,12 @@ export async function exportHistoryDocumentsExcel(inputs: DocumentInput[]) {
     for (const [date, documents] of dayGroups) {
         const dayHeader = sheet.getRow(globalRow);
         dayHeader.getCell(1).value = `NGÀY: ${date.split('-').reverse().join('/')}  ·  ${documents.length} PHIẾU`;
-        dayHeader.eachCell({includeEmpty: true}, (cell) => {
+        for (let column = 1; column <= 10; column += 1) {
+            const cell = dayHeader.getCell(column);
             cell.font = {name: 'Times New Roman', size: 15, bold: true, color: {argb: 'FFFFFF'}};
             cell.fill = {type: 'pattern', pattern: 'solid', fgColor: {argb: navy}};
             cell.alignment = {vertical: 'middle', horizontal: 'left'};
-        });
+        }
         sheet.getRow(globalRow).height = 28;
         globalRow += 1;
 
@@ -373,11 +374,12 @@ export async function exportHistoryDocumentsExcel(inputs: DocumentInput[]) {
             ticketNumber += 1;
             const ticketHeader = sheet.getRow(globalRow);
             ticketHeader.getCell(1).value = `PHIẾU ${ticketNumber}  |  ${input.type === 'outbound' ? 'XUẤT HÀNG' : 'HOÀN HÀNG'}  |  ${platformLabel(input.platform)}  |  ${input.items.length} dòng sản phẩm`;
-            ticketHeader.eachCell({includeEmpty: true}, (cell) => {
+            for (let column = 1; column <= 10; column += 1) {
+                const cell = ticketHeader.getCell(column);
                 cell.font = {name: 'Times New Roman', bold: true, color: {argb: navy}};
                 cell.fill = {type: 'pattern', pattern: 'solid', fgColor: {argb: lightBlue}};
                 cell.alignment = {vertical: 'middle'};
-            });
+            }
             sheet.getRow(globalRow).height = 23;
             globalRow += 1;
 
