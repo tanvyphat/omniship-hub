@@ -23,6 +23,41 @@ function platformLabel(platform: DocumentInput['platform']) {
     return platform === 'tiktok' ? 'TikTok Shop' : 'Shopee';
 }
 
+/** Parse ISO (YYYY-MM-DD) or Vietnamese (D/M/YYYY) dates for chronological export sorting. */
+function getBulkExportDateParts(value: string): {year: number; month: number; day: number} | null {
+    const normalized = value.trim();
+    const iso = normalized.match(/^(\\d{4})-(\\d{1,2})-(\\d{1,2})$/);
+    const vn = normalized.match(/^(\\d{1,2})\\/(\\d{1,2})\\/(\\d{4})$/);
+    const shortVn = normalized.match(/^(\\d{1,2})\\/(\\d{1,2})$/);
+    let year: number; let month: number; let day: number;
+    if (iso) { year = Number(iso[1]); month = Number(iso[2]); day = Number(iso[3]); }
+    else if (vn) { day = Number(vn[1]); month = Number(vn[2]); year = Number(vn[3]); }
+    else if (shortVn) { day = Number(shortVn[1]); month = Number(shortVn[2]); year = new Date().getFullYear(); }
+    else return null;
+    const check = new Date(Date.UTC(year, month - 1, day));
+    if (check.getUTCFullYear() !== year || check.getUTCMonth() !== month - 1 || check.getUTCDate() !== day) return null;
+    return {year, month, day};
+}
+
+function bulkExportDateSortKey(value: string): number {
+    const parts = getBulkExportDateParts(value);
+    if (parts) return Date.UTC(parts.year, parts.month - 1, parts.day);
+    const parsed = Date.parse(value);
+    return Number.isNaN(parsed) ? Number.MAX_SAFE_INTEGER : parsed;
+}
+
+function normalizeBulkExportDate(value: string): string {
+    const parts = getBulkExportDateParts(value);
+    if (!parts) return value.trim();
+    return String(parts.year).padStart(4, '0') + '-' + String(parts.month).padStart(2, '0') + '-' + String(parts.day).padStart(2, '0');
+}
+
+function formatBulkExportDate(value: string): string {
+    const parts = getBulkExportDateParts(value);
+    if (!parts) return value;
+    return String(parts.day).padStart(2, '0') + '/' + String(parts.month).padStart(2, '0') + '/' + parts.year;
+}
+
 export async function exportDocumentExcel(input: DocumentInput) {
     const workbook = new ExcelJS.Workbook();
     workbook.creator = 'OmniShip Hub';
@@ -341,15 +376,16 @@ export async function exportHistoryDocumentsExcel(inputs: DocumentInput[]) {
     sheet.views = [{state: 'frozen', ySplit: 0, showGridLines: false}];
 
     const sorted = [...inputs].sort((a, b) =>
-        a.documentDate.localeCompare(b.documentDate)
+        bulkExportDateSortKey(a.documentDate) - bulkExportDateSortKey(b.documentDate)
         || a.platform.localeCompare(b.platform)
         || a.type.localeCompare(b.type),
     );
     const dayGroups = new Map<string, DocumentInput[]>();
     for (const input of sorted) {
-        const group = dayGroups.get(input.documentDate) ?? [];
+        const dateKey = normalizeBulkExportDate(input.documentDate);
+        const group = dayGroups.get(dateKey) ?? [];
         group.push(input);
-        dayGroups.set(input.documentDate, group);
+        dayGroups.set(dateKey, group);
     }
 
     let globalRow = 1;
@@ -360,7 +396,7 @@ export async function exportHistoryDocumentsExcel(inputs: DocumentInput[]) {
 
     for (const [date, documents] of dayGroups) {
         const dayHeader = sheet.getRow(globalRow);
-        dayHeader.getCell(1).value = `NGÀY: ${date.split('-').reverse().join('/')}  ·  ${documents.length} PHIẾU`;
+        dayHeader.getCell(1).value = `NGÀY: ${formatBulkExportDate(date)}  ·  ${documents.length} PHIẾU`;
         for (let column = 1; column <= 10; column += 1) {
             const cell = dayHeader.getCell(column);
             cell.font = {name: 'Times New Roman', size: 15, bold: true, color: {argb: 'FFFFFF'}};
@@ -403,7 +439,7 @@ export async function exportHistoryDocumentsExcel(inputs: DocumentInput[]) {
             const items = [...input.items].sort((a, b) => (a.orderCode || '').localeCompare(b.orderCode || ''));
             items.forEach((item, index) => {
                 const values = [
-                    index + 1, date.split('-').reverse().join('/'), platformLabel(input.platform),
+                    index + 1, formatBulkExportDate(date), platformLabel(input.platform),
                     input.type === 'outbound' ? 'Xuất hàng' : 'Hoàn hàng',
                     item.orderCode, item.productName, item.sku, item.unit, item.variant || '-', item.quantity,
                 ];
@@ -424,7 +460,7 @@ export async function exportHistoryDocumentsExcel(inputs: DocumentInput[]) {
                 row.getCell(2).alignment = {horizontal: 'center', vertical: 'middle'};
                 row.getCell(10).alignment = {horizontal: 'center', vertical: 'middle'};
                 detailRows.push({
-                    Ngày: date.split('-').reverse().join('/'),
+                    Ngày: formatBulkExportDate(date),
                     'Nền tảng': platformLabel(input.platform),
                     'Loại phiếu': input.type === 'outbound' ? 'Xuất hàng' : 'Hoàn hàng',
                     'Mã đơn hàng': item.orderCode,
