@@ -7,6 +7,7 @@ import {
   ClipboardList,
   Download,
   Edit3,
+  Trash2,
   Filter,
   Layers3,
   PackageCheck,
@@ -20,7 +21,7 @@ import { PageHeader } from '../components/PageHeader';
 import { Select } from '../components/Select';
 import { fetchDocument } from '../features/documents/document.service';
 import { useFeatureFlags } from '../features/featureFlags/useFeatureFlags';
-import { fetchHistory } from '../features/history/history.service';
+import { deleteHistoryDocument, fetchHistory } from '../features/history/history.service';
 import { formatDateVN } from '../lib/date';
 import { exportDocumentExcel } from '../lib/excel';
 import type { DocumentHistoryItem, DocumentType, Platform } from '../types/document';
@@ -55,7 +56,7 @@ export function HistoryPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [filterError, setFilterError] = useState('');
-  const [exportingId, setExportingId] = useState<string | null>(null);
+  const [exportingId, setExportingId] = useState<string | null>(null);\n  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [detailById, setDetailById] = useState<Record<string, Awaited<ReturnType<typeof fetchDocument>>>>({});
   const [detailLoadingId, setDetailLoadingId] = useState<string | null>(null);
@@ -185,6 +186,32 @@ export function HistoryPage() {
       setError(err instanceof Error ? err.message : 'Không thể xuất lại file Excel của phiếu.');
     } finally {
       setExportingId(null);
+    }
+  }
+
+  async function removeHistoryDocument(row: DocumentHistoryItem) {
+    const label = row.type === 'outbound' ? 'phiếu xuất hàng' : 'phiếu hoàn hàng';
+    const confirmed = window.confirm(
+      `Bạn có chắc chắn muốn xóa ${label} ngày ${formatDateVN(row.documentDate)}?\\n\\nToàn bộ dữ liệu sản phẩm và thông tin quyết toán thuộc phiếu này sẽ bị xóa khỏi hệ thống. Thao tác này không thể hoàn tác.`,
+    );
+    if (!confirmed) return;
+
+    setDeletingId(row.id);
+    setError('');
+    try {
+      await deleteHistoryDocument(row.id);
+      setRows((current) => current.filter((item) => item.id !== row.id));
+      setTotal((current) => Math.max(0, current - 1));
+      setDetailById((current) => {
+        const next = { ...current };
+        delete next[row.id];
+        return next;
+      });
+      if (expandedId === row.id) setExpandedId(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Không thể xóa phiếu. Vui lòng thử lại.');
+    } finally {
+      setDeletingId(null);
     }
   }
 
@@ -450,6 +477,17 @@ export function HistoryPage() {
                         >
                           <Download className="h-4 w-4" />
                           <span className="hidden lg:inline">Xuất Excel</span>
+                        </Button>
+                        <Button
+                          variant="secondary"
+                          className="h-9 px-3 border-rose-200 text-rose-600 transition-all duration-300 hover:-translate-y-0.5 hover:border-rose-300 hover:bg-rose-50 hover:text-rose-700"
+                          title="Xóa phiếu sai hoặc không còn sử dụng"
+                          loading={deletingId === row.id}
+                          disabled={deletingId !== null || exportingId !== null || loading}
+                          onClick={() => void removeHistoryDocument(row)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                          <span className="hidden lg:inline">Xóa phiếu</span>
                         </Button>
                       </div>
                     </td>

@@ -99,3 +99,14 @@ export async function fetchHistory(filters: HistoryFilters) {
 
   return { rows, count: count ?? 0 };
 }
+
+
+/** Permanently removes a history document; its product rows are deleted by the FK cascade. */
+export async function deleteHistoryDocument(id: string) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { error } = await (supabase as any)
+    .from('warehouse_documents')
+    .delete()
+    .eq('id', id);
+  if (error) throw error;
+}

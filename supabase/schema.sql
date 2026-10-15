@@ -102,6 +102,14 @@ create policy "Admin can view warehouse document items"
   on public.warehouse_document_items for select
   to authenticated using ((select public.is_admin()));
 
+-- Allow the admin to delete an entire history document. Product rows are removed
+-- automatically by the document_items foreign key ON DELETE CASCADE.
+grant delete on public.warehouse_documents to authenticated;
+drop policy if exists "Admin can delete warehouse documents" on public.warehouse_documents;
+create policy "Admin can delete warehouse documents"
+  on public.warehouse_documents for delete
+  to authenticated using ((select public.is_admin()));
+
 -- Feature Control ------------------------------------------------------------
 -- All authenticated users can read module availability, but only admin@gmail.com
 -- can change it. Data remains untouched when a module is turned off.
