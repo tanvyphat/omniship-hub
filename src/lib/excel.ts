@@ -442,7 +442,7 @@ export async function exportHistoryDocumentsExcel(inputs: DocumentInput[]) {
             for (let i = 1; i <= items.length; i += 1) {
                 const nextCode = items[i]?.orderCode ?? null;
                 if (i === items.length || nextCode !== lastCode) {
-                    if (lastCode && globalRow - (items.length - i) - (items.length - i === 0 ? 0 : 0) > 0) {
+                    if (lastCode) {
                         const mergeEnd = firstDataRow + i - 1;
                         if (mergeEnd > mergeStart) sheet.mergeCells(mergeStart, 5, mergeEnd, 5);
                     }
