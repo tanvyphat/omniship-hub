@@ -359,23 +359,25 @@ export async function exportHistoryDocumentsExcel(inputs: DocumentInput[]) {
     const detailRows: Array<Record<string, string | number>> = [];
 
     for (const [date, documents] of dayGroups) {
-        sheet.mergeCells(globalRow, 1, globalRow, 10);
-        const dayHeader = sheet.getCell(globalRow, 1);
-        dayHeader.value = `NGÀY: ${date.split('-').reverse().join('/')}  ·  ${documents.length} PHIẾU`;
-        dayHeader.font = {name: 'Times New Roman', size: 15, bold: true, color: {argb: 'FFFFFF'}};
-        dayHeader.fill = {type: 'pattern', pattern: 'solid', fgColor: {argb: navy}};
-        dayHeader.alignment = {vertical: 'middle', horizontal: 'left'};
+        const dayHeader = sheet.getRow(globalRow);
+        dayHeader.getCell(1).value = `NGÀY: ${date.split('-').reverse().join('/')}  ·  ${documents.length} PHIẾU`;
+        dayHeader.eachCell({includeEmpty: true}, (cell) => {
+            cell.font = {name: 'Times New Roman', size: 15, bold: true, color: {argb: 'FFFFFF'}};
+            cell.fill = {type: 'pattern', pattern: 'solid', fgColor: {argb: navy}};
+            cell.alignment = {vertical: 'middle', horizontal: 'left'};
+        });
         sheet.getRow(globalRow).height = 28;
         globalRow += 1;
 
         for (const input of documents) {
             ticketNumber += 1;
-            sheet.mergeCells(globalRow, 1, globalRow, 10);
-            const ticketHeader = sheet.getCell(globalRow, 1);
-            ticketHeader.value = `PHIẾU ${ticketNumber}  |  ${input.type === 'outbound' ? 'XUẤT HÀNG' : 'HOÀN HÀNG'}  |  ${platformLabel(input.platform)}  |  ${input.items.length} dòng sản phẩm`;
-            ticketHeader.font = {name: 'Times New Roman', bold: true, color: {argb: navy}};
-            ticketHeader.fill = {type: 'pattern', pattern: 'solid', fgColor: {argb: lightBlue}};
-            ticketHeader.alignment = {vertical: 'middle'};
+            const ticketHeader = sheet.getRow(globalRow);
+            ticketHeader.getCell(1).value = `PHIẾU ${ticketNumber}  |  ${input.type === 'outbound' ? 'XUẤT HÀNG' : 'HOÀN HÀNG'}  |  ${platformLabel(input.platform)}  |  ${input.items.length} dòng sản phẩm`;
+            ticketHeader.eachCell({includeEmpty: true}, (cell) => {
+                cell.font = {name: 'Times New Roman', bold: true, color: {argb: navy}};
+                cell.fill = {type: 'pattern', pattern: 'solid', fgColor: {argb: lightBlue}};
+                cell.alignment = {vertical: 'middle'};
+            });
             sheet.getRow(globalRow).height = 23;
             globalRow += 1;
 
@@ -436,20 +438,7 @@ export async function exportHistoryDocumentsExcel(inputs: DocumentInput[]) {
                 globalRow += 1;
             });
 
-            // Merge repeated order codes within each ticket for quick scanning.
-            let mergeStart = firstDataRow;
-            let lastCode = items[0]?.orderCode ?? '';
-            for (let i = 1; i <= items.length; i += 1) {
-                const nextCode = items[i]?.orderCode ?? null;
-                if (i === items.length || nextCode !== lastCode) {
-                    if (lastCode) {
-                        const mergeEnd = firstDataRow + i - 1;
-                        if (mergeEnd > mergeStart) sheet.mergeCells(mergeStart, 5, mergeEnd, 5);
-                    }
-                    mergeStart = firstDataRow + i;
-                    lastCode = nextCode ?? '';
-                }
-            }
+            // Keep order-code cells unmerged in bulk exports to maximize XLSX compatibility.
             globalRow += 1; // visual gap between ticket blocks
         }
         globalRow += 1; // visual gap between day clusters
