@@ -1,13 +1,16 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  AlertTriangle,
   CalendarDays,
   ChevronDown,
   ChevronLeft,
   ChevronRight,
+  CheckCircle2,
   ClipboardList,
   Download,
   Edit3,
   Trash2,
+  X,
   Filter,
   Layers3,
   PackageCheck,
@@ -58,6 +61,8 @@ export function HistoryPage() {
   const [filterError, setFilterError] = useState('');
   const [exportingId, setExportingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<DocumentHistoryItem | null>(null);
+  const [successMessage, setSuccessMessage] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [detailById, setDetailById] = useState<Record<string, Awaited<ReturnType<typeof fetchDocument>>>>({});
   const [detailLoadingId, setDetailLoadingId] = useState<string | null>(null);
@@ -190,15 +195,12 @@ export function HistoryPage() {
     }
   }
 
-  async function removeHistoryDocument(row: DocumentHistoryItem) {
-    const label = row.type === 'outbound' ? 'phiếu xuất hàng' : 'phiếu hoàn hàng';
-    const confirmed = window.confirm(
-      `Bạn có chắc chắn muốn xóa ${label} ngày ${formatDateVN(row.documentDate)}?\n\nToàn bộ dữ liệu sản phẩm và thông tin quyết toán thuộc phiếu này sẽ bị xóa khỏi hệ thống. Thao tác này không thể hoàn tác.`,
-    );
-    if (!confirmed) return;
-
+  async function confirmDeleteHistoryDocument() {
+    if (!pendingDelete) return;
+    const row = pendingDelete;
     setDeletingId(row.id);
     setError('');
+    setSuccessMessage('');
     try {
       await deleteHistoryDocument(row.id);
       setRows((current) => current.filter((item) => item.id !== row.id));
@@ -209,6 +211,8 @@ export function HistoryPage() {
         return next;
       });
       if (expandedId === row.id) setExpandedId(null);
+      setPendingDelete(null);
+      setSuccessMessage('Đã xóa phiếu và toàn bộ dữ liệu sản phẩm liên quan.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Không thể xóa phiếu. Vui lòng thử lại.');
     } finally {
@@ -485,7 +489,7 @@ export function HistoryPage() {
                           title="Xóa phiếu sai hoặc không còn sử dụng"
                           loading={deletingId === row.id}
                           disabled={deletingId !== null || exportingId !== null || loading}
-                          onClick={() => void removeHistoryDocument(row)}
+                          onClick={() => { setSuccessMessage(''); setPendingDelete(row); }}
                         >
                           <Trash2 className="h-4 w-4" />
                           <span className="hidden lg:inline">Xóa phiếu</span>
@@ -599,6 +603,16 @@ export function HistoryPage() {
         </div>
       </section>
 
+      {successMessage && (
+        <div role="status" className="fixed bottom-5 right-5 z-40 flex max-w-md items-start gap-3 rounded-2xl border border-emerald-200 bg-white px-4 py-3 text-sm font-semibold text-emerald-800 shadow-2xl shadow-emerald-900/10">
+          <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
+          <span className="flex-1">{successMessage}</span>
+          <button type="button" className="cursor-pointer rounded-lg p-1 text-emerald-700 hover:bg-emerald-50" onClick={() => setSuccessMessage('')} aria-label="Đóng thông báo">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
       {createAction && (
         <div className="flex justify-end">
           <button
@@ -610,6 +624,89 @@ export function HistoryPage() {
             <createAction.icon className="relative h-4 w-4 transition-transform duration-300 group-hover:scale-110" />
             <span className="relative">{createAction.label}</span>
           </button>
+        </div>
+      )}
+
+      {pendingDelete && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && deletingId === null) setPendingDelete(null);
+          }}
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="delete-dialog-title"
+            className="w-full max-w-md overflow-hidden rounded-3xl border border-white/70 bg-white shadow-2xl shadow-slate-950/25"
+          >
+            <div className="flex items-start gap-4 border-b border-rose-100 bg-gradient-to-br from-rose-50 via-white to-orange-50 p-6">
+              <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-rose-100 text-rose-600">
+                <Trash2 className="h-6 w-6" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <h2 id="delete-dialog-title" className="text-lg font-black text-slate-950">Xác nhận xóa phiếu</h2>
+                <p className="mt-1 text-sm leading-6 text-slate-600">Bạn có chắc muốn xóa phiếu này khỏi lịch sử không?</p>
+              </div>
+              <button
+                type="button"
+                aria-label="Đóng hộp thoại"
+                disabled={deletingId !== null}
+                onClick={() => setPendingDelete(null)}
+                className="cursor-pointer rounded-xl p-2 text-slate-400 transition hover:bg-white hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4 p-6">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Loại phiếu</span>
+                  <span className={`rounded-full px-3 py-1 text-xs font-bold ${pendingDelete.type === 'outbound' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'}`}>
+                    {pendingDelete.type === 'outbound' ? 'Phiếu xuất hàng' : 'Phiếu hoàn hàng'}
+                  </span>
+                </div>
+                <div className="mt-3 flex items-center justify-between gap-3 text-sm">
+                  <span className="text-slate-500">Nền tảng</span>
+                  <span className="font-bold text-slate-800">{pendingDelete.platform === 'shopee' ? 'Shopee' : 'TikTok Shop'}</span>
+                </div>
+                <div className="mt-2 flex items-center justify-between gap-3 text-sm">
+                  <span className="text-slate-500">Ngày tạo phiếu</span>
+                  <span className="font-bold text-slate-800">{formatDateVN(pendingDelete.documentDate)}</span>
+                </div>
+                <div className="mt-2 flex items-center justify-between gap-3 text-sm">
+                  <span className="text-slate-500">Số đơn / dòng hàng</span>
+                  <span className="font-bold text-slate-800">{pendingDelete.orderCount} đơn / {pendingDelete.itemCount} dòng</span>
+                </div>
+              </div>
+
+              <div className="flex gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-3.5 text-sm leading-5 text-rose-800">
+                <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-rose-600" />
+                <p>Phiếu, các dòng sản phẩm và thông tin quyết toán liên quan sẽ bị xóa vĩnh viễn. Thao tác này không thể hoàn tác.</p>
+              </div>
+
+              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  disabled={deletingId !== null}
+                  onClick={() => setPendingDelete(null)}
+                  className="inline-flex h-11 cursor-pointer items-center justify-center rounded-xl border border-slate-200 bg-white px-5 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="button"
+                  disabled={deletingId !== null}
+                  onClick={() => void confirmDeleteHistoryDocument()}
+                  className="inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-xl bg-rose-600 px-5 text-sm font-bold text-white shadow-lg shadow-rose-600/20 transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {deletingId !== null ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                  {deletingId !== null ? 'Đang xóa…' : 'Xóa phiếu'}
+                </button>
+              </div>
+            </div>
+          </section>
         </div>
       )}
     </div>
