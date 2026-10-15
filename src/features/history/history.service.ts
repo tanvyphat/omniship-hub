@@ -99,3 +99,22 @@ export async function fetchHistory(filters: HistoryFilters) {
 
   return { rows, count: count ?? 0 };
 }
+
+
+/** Permanently removes a history document and its product rows. */
+export async function deleteHistoryDocument(id: string) {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const client = supabase as any;
+
+  const { error: itemsError } = await client
+    .from('warehouse_document_items')
+    .delete()
+    .eq('document_id', id);
+  if (itemsError) throw itemsError;
+
+  const { error: documentError } = await client
+    .from('warehouse_documents')
+    .delete()
+    .eq('id', id);
+  if (documentError) throw documentError;
+}
