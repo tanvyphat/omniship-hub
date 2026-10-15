@@ -26,8 +26,8 @@ import { fetchDocument } from '../features/documents/document.service';
 import { useFeatureFlags } from '../features/featureFlags/useFeatureFlags';
 import { deleteHistoryDocument, fetchHistory } from '../features/history/history.service';
 import { formatDateVN } from '../lib/date';
-import { exportDocumentExcel } from '../lib/excel';
-import type { DocumentHistoryItem, DocumentType, Platform } from '../types/document';
+import { exportDocumentExcel, exportHistoryDocumentsExcel } from '../lib/excel';
+import type { DocumentHistoryItem, DocumentInput, DocumentType, Platform } from '../types/document';
 
 const PAGE_SIZE = 100;
 type HistoryDocument = Awaited<ReturnType<typeof fetchDocument>>;
@@ -60,6 +60,8 @@ export function HistoryPage() {
   const [error, setError] = useState('');
   const [filterError, setFilterError] = useState('');
   const [exportingId, setExportingId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [bulkExporting, setBulkExporting] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<DocumentHistoryItem | null>(null);
   const [successMessage, setSuccessMessage] = useState('');
@@ -192,6 +194,74 @@ export function HistoryPage() {
       setError(err instanceof Error ? err.message : 'Không thể xuất lại file Excel của phiếu.');
     } finally {
       setExportingId(null);
+    }
+  }
+
+  function toggleSelected(id: string) {
+    setSelectedIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
+  }
+
+  function toggleCurrentPageSelection(checked: boolean) {
+    setSelectedIds((current) => {
+      const pageIds = rows.map((row) => row.id);
+      return checked
+        ? [...new Set([...current, ...pageIds])]
+        : current.filter((id) => !pageIds.includes(id));
+    });
+  }
+
+  async function exportDocuments(ids: string[]) {
+    if (ids.length === 0) {
+      setError('Vui lòng chọn ít nhất một phiếu để xuất Excel.');
+      return;
+    }
+    setBulkExporting(true);
+    setError('');
+    try {
+      const documents: DocumentInput[] = [];
+      for (let i = 0; i < ids.length; i += 10) {
+        const batch = await Promise.all(ids.slice(i, i + 10).map((id) => fetchDocument(id)));
+        documents.push(...batch);
+      }
+      await exportHistoryDocumentsExcel(documents);
+      setSuccessMessage(`Đã xuất gộp ${documents.length} phiếu vào một file Excel.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Không thể xuất các phiếu đã chọn.');
+    } finally {
+      setBulkExporting(false);
+    }
+  }
+
+  async function exportAllMatchingDocuments() {
+    setBulkExporting(true);
+    setError('');
+    try {
+      const ids: string[] = [];
+      let currentPage = 0;
+      let count = 0;
+      do {
+        const result = await fetchHistory({
+          type, from, to, page: currentPage, pageSize: 500, platform, allowedTypes,
+        });
+        ids.push(...result.rows.map((row) => row.id));
+        count = result.count;
+        currentPage += 1;
+      } while (ids.length < count);
+      if (ids.length === 0) {
+        setError('Không có phiếu nào phù hợp với bộ lọc hiện tại để xuất.');
+        return;
+      }
+      const documents: DocumentInput[] = [];
+      for (let i = 0; i < ids.length; i += 10) {
+        const batch = await Promise.all(ids.slice(i, i + 10).map((id) => fetchDocument(id)));
+        documents.push(...batch);
+      }
+      await exportHistoryDocumentsExcel(documents);
+      setSuccessMessage(`Đã xuất gộp toàn bộ ${documents.length} phiếu phù hợp với bộ lọc vào một file Excel.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Không thể xuất toàn bộ lịch sử.');
+    } finally {
+      setBulkExporting(false);
     }
   }
 
@@ -382,13 +452,57 @@ export function HistoryPage() {
               {filterError}
             </div>
           )}
+          <div className="mt-5 flex flex-col gap-3 rounded-2xl border border-violet-100 bg-gradient-to-r from-violet-50/80 via-white to-blue-50/80 p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="text-sm">
+              <div className="font-black text-slate-900">Xuất Excel hàng loạt</div>
+              <div className="mt-1 text-xs text-slate-500">
+                Đã chọn {selectedIds.length} phiếu · Các phiếu được gom vào một file và phân cụm theo ngày
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => void exportDocuments(selectedIds)}
+                disabled={bulkExporting || selectedIds.length === 0 || loading}
+                className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-blue-600 px-4 text-sm font-bold text-white shadow-md transition-all hover:-translate-y-0.5 hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {bulkExporting ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                Xuất phiếu đã chọn
+              </button>
+              <button
+                type="button"
+                onClick={() => void exportAllMatchingDocuments()}
+                disabled={bulkExporting || loading || total === 0}
+                className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-xl border border-violet-200 bg-white px-4 text-sm font-bold text-violet-700 transition-all hover:-translate-y-0.5 hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {bulkExporting ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Layers3 className="h-4 w-4" />}
+                Xuất tất cả phiếu ({total})
+              </button>
+              {selectedIds.length > 0 && (
+                <button type="button" onClick={() => setSelectedIds([])} disabled={bulkExporting} className="h-10 cursor-pointer rounded-xl px-3 text-sm font-bold text-slate-500 hover:bg-white disabled:cursor-not-allowed">
+                  Bỏ chọn
+                </button>
+              )}
+            </div>
+          </div>
         </div>
 
         <div className="relative overflow-x-auto">
           <table className="w-full min-w-[980px] border-collapse text-left text-sm">
             <thead>
               <tr className="border-b border-slate-200/80 bg-gradient-to-r from-slate-50 via-violet-50/50 to-slate-50 text-[11px] uppercase tracking-[0.08em] text-slate-500">
-                <th className="px-5 py-4 font-black">STT</th>
+                <th className="px-5 py-4 font-black">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      aria-label="Chọn tất cả phiếu trên trang này"
+                      className="h-4 w-4 cursor-pointer accent-violet-600"
+                      checked={rows.length > 0 && rows.every((row) => selectedIds.includes(row.id))}
+                      onChange={(event) => toggleCurrentPageSelection(event.target.checked)}
+                    />
+                    STT
+                  </div>
+                </th>
                 <th className="px-5 py-4 font-black">Ngày</th>
                 <th className="px-5 py-4 font-black">Loại phiếu</th>
                 <th className="px-5 py-4 font-black">Số đơn</th>
@@ -437,9 +551,18 @@ export function HistoryPage() {
                 <Fragment key={row.id}>
                   <tr key={row.id} className={`group border-b border-slate-100/90 transition-all duration-200 hover:bg-violet-50/35 ${expandedId === row.id ? 'bg-violet-50/40' : ''}`}>
                     <td className="px-5 py-4">
-                      <span className="inline-grid h-7 min-w-7 place-items-center rounded-lg bg-slate-100 px-2 text-xs font-black text-slate-500 transition-colors group-hover:bg-violet-100 group-hover:text-violet-700">
-                        {page * PAGE_SIZE + index + 1}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          aria-label={`Chọn phiếu ngày ${formatDateVN(row.documentDate)}`}
+                          className="h-4 w-4 cursor-pointer accent-violet-600"
+                          checked={selectedIds.includes(row.id)}
+                          onChange={() => toggleSelected(row.id)}
+                        />
+                        <span className="inline-grid h-7 min-w-7 place-items-center rounded-lg bg-slate-100 px-2 text-xs font-black text-slate-500 transition-colors group-hover:bg-violet-100 group-hover:text-violet-700">
+                          {page * PAGE_SIZE + index + 1}
+                        </span>
+                      </div>
                     </td>
                     <td className="whitespace-nowrap px-5 py-4 font-bold text-slate-800">{formatDateVN(row.documentDate)}</td>
                     <td className="px-5 py-4">
