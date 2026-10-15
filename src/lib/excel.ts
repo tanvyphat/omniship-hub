@@ -26,9 +26,9 @@ function platformLabel(platform: DocumentInput['platform']) {
 /** Parse ISO (YYYY-MM-DD) or Vietnamese (D/M/YYYY) dates for chronological export sorting. */
 function getBulkExportDateParts(value: string): {year: number; month: number; day: number} | null {
     const normalized = value.trim();
-    const iso = normalized.match(/^(\\d{4})-(\\d{1,2})-(\\d{1,2})$/);
-    const vn = normalized.match(/^(\\d{1,2})\\/(\\d{1,2})\\/(\\d{4})$/);
-    const shortVn = normalized.match(/^(\\d{1,2})\\/(\\d{1,2})$/);
+    const iso = normalized.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+    const vn = normalized.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    const shortVn = normalized.match(/^(\d{1,2})\/(\d{1,2})$/);
     let year: number; let month: number; let day: number;
     if (iso) { year = Number(iso[1]); month = Number(iso[2]); day = Number(iso[3]); }
     else if (vn) { day = Number(vn[1]); month = Number(vn[2]); year = Number(vn[3]); }
