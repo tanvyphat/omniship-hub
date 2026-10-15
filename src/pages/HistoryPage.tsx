@@ -56,7 +56,8 @@ export function HistoryPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [filterError, setFilterError] = useState('');
-  const [exportingId, setExportingId] = useState<string | null>(null);\n  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [exportingId, setExportingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [detailById, setDetailById] = useState<Record<string, Awaited<ReturnType<typeof fetchDocument>>>>({});
   const [detailLoadingId, setDetailLoadingId] = useState<string | null>(null);
@@ -192,7 +193,7 @@ export function HistoryPage() {
   async function removeHistoryDocument(row: DocumentHistoryItem) {
     const label = row.type === 'outbound' ? 'phiếu xuất hàng' : 'phiếu hoàn hàng';
     const confirmed = window.confirm(
-      `Bạn có chắc chắn muốn xóa ${label} ngày ${formatDateVN(row.documentDate)}?\\n\\nToàn bộ dữ liệu sản phẩm và thông tin quyết toán thuộc phiếu này sẽ bị xóa khỏi hệ thống. Thao tác này không thể hoàn tác.`,
+      `Bạn có chắc chắn muốn xóa ${label} ngày ${formatDateVN(row.documentDate)}?\n\nToàn bộ dữ liệu sản phẩm và thông tin quyết toán thuộc phiếu này sẽ bị xóa khỏi hệ thống. Thao tác này không thể hoàn tác.`,
     );
     if (!confirmed) return;
 
