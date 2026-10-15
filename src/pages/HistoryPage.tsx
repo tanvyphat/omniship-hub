@@ -27,7 +27,7 @@ import { useFeatureFlags } from '../features/featureFlags/useFeatureFlags';
 import { deleteHistoryDocument, fetchHistory } from '../features/history/history.service';
 import { formatDateVN } from '../lib/date';
 import { exportDocumentExcel, exportHistoryDocumentsExcel } from '../lib/excel';
-import type { DocumentHistoryItem, DocumentType, Platform } from '../types/document';
+import type { DocumentHistoryItem, DocumentInput, DocumentType, Platform } from '../types/document';
 
 const PAGE_SIZE = 100;
 type HistoryDocument = Awaited<ReturnType<typeof fetchDocument>>;
@@ -218,7 +218,7 @@ export function HistoryPage() {
     setBulkExporting(true);
     setError('');
     try {
-      const documents = [];
+      const documents: DocumentInput[] = [];
       for (let i = 0; i < ids.length; i += 10) {
         const batch = await Promise.all(ids.slice(i, i + 10).map((id) => fetchDocument(id)));
         documents.push(...batch);
@@ -251,7 +251,7 @@ export function HistoryPage() {
         setError('Không có phiếu nào phù hợp với bộ lọc hiện tại để xuất.');
         return;
       }
-      const documents = [];
+      const documents: DocumentInput[] = [];
       for (let i = 0; i < ids.length; i += 10) {
         const batch = await Promise.all(ids.slice(i, i + 10).map((id) => fetchDocument(id)));
         documents.push(...batch);
