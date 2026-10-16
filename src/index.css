@@ -36,15 +36,17 @@ button, input, select { font: inherit; }
   animation: omni-gradient 6s ease infinite;
 }
 
-/* Keep the order code field beside the order title instead of stacking it at the far right. */
+/* Order header: title on the left, order-code field in the middle, action on the right. */
 @media (min-width: 768px) {
   [class*="md:grid-cols-[1fr_auto]"] {
-    grid-template-columns: minmax(180px, 1fr) minmax(320px, 520px) auto !important;
+    grid-template-columns: minmax(260px, 1fr) minmax(360px, 1.25fr) auto !important;
     align-items: center !important;
+    justify-content: stretch !important;
   }
 
   [class*="md:grid-cols-[1fr_auto]"] > button {
     grid-column: auto !important;
+    justify-self: end !important;
   }
 }
 
