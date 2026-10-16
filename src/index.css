@@ -36,6 +36,18 @@ button, input, select { font: inherit; }
   animation: omni-gradient 6s ease infinite;
 }
 
+/* Keep the order code field beside the order title instead of stacking it at the far right. */
+@media (min-width: 768px) {
+  [class*="md:grid-cols-[1fr_auto]"] {
+    grid-template-columns: minmax(180px, 1fr) minmax(320px, 520px) auto !important;
+    align-items: center !important;
+  }
+
+  [class*="md:grid-cols-[1fr_auto]"] > button {
+    grid-column: auto !important;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
