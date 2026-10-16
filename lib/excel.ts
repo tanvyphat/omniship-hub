@@ -75,7 +75,10 @@ function styleHeader(row: ExcelJS.Row, fill = blue) {
 
 function finalizeWorkbook(workbook: ExcelJS.Workbook) {
   workbook.eachSheet((worksheet) => {
-    worksheet.eachRow({ includeEmpty: false }, (row) => row.eachCell({ includeEmpty: false }, (cell) => { cell.font = { ...(cell.font ?? {}), name: 'Times New Roman' }; }));
+    worksheet.eachRow({ includeEmpty: false }, (row) => row.eachCell({ includeEmpty: false }, (cell) => {
+      cell.font = { ...(cell.font ?? {}), name: 'Times New Roman' };
+      cell.alignment = { ...(cell.alignment ?? {}), horizontal: 'center', vertical: 'middle' };
+    }));
   });
 }
 
