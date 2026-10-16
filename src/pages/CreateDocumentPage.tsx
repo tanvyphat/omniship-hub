@@ -29,7 +29,18 @@ import { importMarketplaceOrders } from '../lib/importMarketplaceOrders';
 import type { MarketplaceImportResult } from '../lib/importMarketplaceOrders';
 import type { DocumentInput, DocumentItemInput, DocumentType, Platform } from '../types/document';
 
-const emptyItem = (): DocumentItemInput => ({ orderGroupId: `draft:${crypto.randomUUID()}`, orderCode: '', productName: '', sku: '', variant: '', unit: '', quantity: 1, orderSettlementAmount: null, salePrice: null, minimumSettlement: null });
+const emptyItem = (): DocumentItemInput => ({
+  orderGroupId: `draft:${crypto.randomUUID()}`,
+  orderCode: '',
+  productName: '',
+  sku: '',
+  variant: '',
+  unit: '',
+  quantity: 1,
+  orderSettlementAmount: null,
+  salePrice: null,
+  minimumSettlement: null,
+});
 
 interface Props {
   type?: DocumentType;
@@ -40,14 +51,14 @@ interface ImportSummary extends MarketplaceImportResult {
   fileName: string;
 }
 
-function hasItemData(item: DocumentItemInput) {
-  return Boolean(item.orderCode.trim() || item.productName.trim() || item.sku.trim() || item.variant.trim() || item.unit.trim());
-}
-
 interface LocalDocumentDraft {
   documentDate: string;
   items: DocumentItemInput[];
   savedAt: string;
+}
+
+function hasItemData(item: DocumentItemInput) {
+  return Boolean(item.orderCode.trim() || item.productName.trim() || item.sku.trim() || item.variant.trim() || item.unit.trim());
 }
 
 function readLocalDraft(key: string | null): LocalDocumentDraft | null {
@@ -127,25 +138,14 @@ export function CreateDocumentPage({ type: createType, edit = false }: Props) {
   useEffect(() => {
     if (!draftStorageKey || edit || loadingDocument || !documentType || !platform || saved) return;
 
-    const hasDraftContent = items.some((item) =>
-      hasItemData(item)
-      || item.salePrice !== null
-      || item.minimumSettlement !== null
-      || item.orderSettlementAmount !== null,
-    ) || documentDate !== getTodayISO();
-
+    const hasDraftContent = items.some(hasItemData) || documentDate !== getTodayISO();
     try {
       if (!hasDraftContent) {
         window.localStorage.removeItem(draftStorageKey);
         setDraftStatus('');
         return;
       }
-
-      const draft: LocalDocumentDraft = {
-        documentDate,
-        items,
-        savedAt: new Date().toISOString(),
-      };
+      const draft: LocalDocumentDraft = { documentDate, items, savedAt: new Date().toISOString() };
       window.localStorage.setItem(draftStorageKey, JSON.stringify(draft));
       setDraftStatus('Đã tự lưu bản nháp trên thiết bị này');
     } catch {
@@ -159,16 +159,15 @@ export function CreateDocumentPage({ type: createType, edit = false }: Props) {
   );
 
   const orderGroups = useMemo(() => {
-    const groups = new Map<string, { key: string; orderCode: string; itemIndexes: number[]; settlementAmount: number | null }>();
+    const groups = new Map<string, { key: string; orderCode: string; itemIndexes: number[] }>();
     items.forEach((item, index) => {
       const orderCode = item.orderCode.trim();
-      // Keep newly-created blank orders separate. Legacy/imported rows still group by order code.
       const key = item.orderGroupId || (orderCode ? `order:${orderCode}` : `empty:${index}`);
       const group = groups.get(key);
       if (group) {
         group.itemIndexes.push(index);
       } else {
-        groups.set(key, { key, orderCode: item.orderCode, itemIndexes: [index], settlementAmount: item.orderSettlementAmount ?? null });
+        groups.set(key, { key, orderCode: item.orderCode, itemIndexes: [index] });
       }
     });
     return Array.from(groups.values());
@@ -219,10 +218,6 @@ export function CreateDocumentPage({ type: createType, edit = false }: Props) {
     setError('');
   }
 
-  function handleResetForm() {
-    setShowConfirmReset(true);
-  }
-
   function confirmReset() {
     setItems([emptyItem()]);
     setDocumentDate(getTodayISO());
@@ -239,18 +234,14 @@ export function CreateDocumentPage({ type: createType, edit = false }: Props) {
 
   async function handleImportFile(file: File) {
     if (documentType !== 'outbound') return;
-
-    const hasExistingData = items.some(hasItemData);
-    if (hasExistingData) {
+    if (items.some(hasItemData)) {
       const shouldReplace = window.confirm('Nhập file sẽ thay thế danh sách sản phẩm đang có trên phiếu. Sếp có muốn tiếp tục không?');
       if (!shouldReplace) return;
     }
-
     setImporting(true);
     setError('');
     setImportSummary(null);
     setSaved(false);
-
     try {
       const result = await importMarketplaceOrders(file, platform);
       setItems(result.items);
@@ -276,7 +267,7 @@ export function CreateDocumentPage({ type: createType, edit = false }: Props) {
       } else {
         await createDocument(input);
         if (draftStorageKey) {
-          try { window.localStorage.removeItem(draftStorageKey); } catch { /* The saved document is already safe in Supabase. */ }
+          try { window.localStorage.removeItem(draftStorageKey); } catch { /* Ignore storage errors after save. */ }
         }
         setDraftRestored(false);
         setDraftStatus('Phiếu đã lưu thành công; bản nháp tạm đã được xóa');
@@ -311,7 +302,6 @@ export function CreateDocumentPage({ type: createType, edit = false }: Props) {
   const backPath = editId
     ? historyPath
     : (documentType === 'outbound' ? '/warehouse/outbound/platform' : '/warehouse/returns/platform');
-
   const isShopee = platform === 'shopee';
   const platformLabel = isShopee ? 'Shopee' : 'TikTok Shop';
   const PlatformIcon = isShopee ? ShoppingBag : Store;
@@ -323,25 +313,9 @@ export function CreateDocumentPage({ type: createType, edit = false }: Props) {
   return (
     <div className="space-y-5">
       {!edit && (draftRestored || draftStatus || saved) && (
-        <div
-          role="status"
-          aria-live="polite"
-          className={`flex items-start gap-2 rounded-xl border px-4 py-3 text-sm ${
-            saved
-              ? 'border-emerald-200 bg-emerald-50 text-emerald-800'
-              : draftRestored
-                ? 'border-blue-200 bg-blue-50 text-blue-800'
-                : 'border-slate-200 bg-white text-slate-600'
-          }`}
-        >
+        <div role="status" aria-live="polite" className={`flex items-start gap-2 rounded-xl border px-4 py-3 text-sm ${saved ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : draftRestored ? 'border-blue-200 bg-blue-50 text-blue-800' : 'border-slate-200 bg-white text-slate-600'}`}>
           {saved ? <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" /> : <Info className="mt-0.5 h-4 w-4 shrink-0" />}
-          <span>
-            {saved
-              ? 'Phiếu đã được lưu vào hệ thống. Bản nháp trên thiết bị đã được xóa.'
-              : draftRestored
-                ? 'Đã khôi phục bản nháp chưa lưu từ thiết bị này. Hệ thống sẽ tiếp tục tự lưu khi bạn chỉnh sửa.'
-                : draftStatus}
-          </span>
+          <span>{saved ? 'Phiếu đã được lưu vào hệ thống. Bản nháp trên thiết bị đã được xóa.' : draftRestored ? 'Đã khôi phục bản nháp chưa lưu từ thiết bị này. Hệ thống sẽ tiếp tục tự lưu khi bạn chỉnh sửa.' : draftStatus}</span>
         </div>
       )}
 
@@ -363,72 +337,23 @@ export function CreateDocumentPage({ type: createType, edit = false }: Props) {
           <div className="absolute -left-20 top-1/3 h-56 w-56 animate-pulse rounded-full bg-violet-300/10 blur-3xl [animation-delay:800ms]" />
         </div>
 
-        <div className={`relative border-b border-slate-100/90 p-5 md:p-6`}>
+        <div className="relative border-b border-slate-100/90 p-5 md:p-6">
           <div className={`grid gap-5 ${editId ? 'md:grid-cols-4' : 'md:grid-cols-[1fr_1.35fr]'}`}>
             {editId && (
-              <Select
-                label="Loại phiếu"
-                value={documentType}
-                onChange={(e) => {
-                  const next = e.target.value as DocumentType;
-                  setDocumentType(next);
-                  setImportSummary(null);
-                  setSaved(false);
-                  setError('');
-                }}
-                options={[
-                  { value: 'outbound', label: 'Phiếu xuất hàng' },
-                  { value: 'return', label: 'Phiếu hoàn hàng' },
-                ]}
-              />
+              <Select label="Loại phiếu" value={documentType} onChange={(e) => { setDocumentType(e.target.value as DocumentType); setImportSummary(null); setSaved(false); setError(''); }} options={[{ value: 'outbound', label: 'Phiếu xuất hàng' }, { value: 'return', label: 'Phiếu hoàn hàng' }]} />
             )}
-
             {editId && (
-              <Select
-                label="Nền tảng"
-                value={platform}
-                onChange={(e) => {
-                  setPlatform(e.target.value as Platform);
-                  setImportSummary(null);
-                  setSaved(false);
-                  setError('');
-                }}
-                options={[
-                  { value: 'tiktok', label: 'TikTok Shop' },
-                  { value: 'shopee', label: 'Shopee' },
-                ]}
-              />
+              <Select label="Nền tảng" value={platform} onChange={(e) => { setPlatform(e.target.value as Platform); setImportSummary(null); setSaved(false); setError(''); }} options={[{ value: 'tiktok', label: 'TikTok Shop' }, { value: 'shopee', label: 'Shopee' }]} />
             )}
-
             <label className="group grid gap-1.5 text-sm font-semibold text-slate-700">
-              <span className="flex items-center gap-2 transition-colors group-focus-within:text-violet-700">
-                <CalendarDays className="h-4 w-4" />
-                Ngày {documentType === 'outbound' ? 'xuất kho' : 'hoàn hàng'}
-              </span>
-              <input
-                className="h-11 cursor-pointer rounded-xl border border-slate-200 bg-white/90 px-3 text-sm outline-none transition-all duration-200 hover:border-slate-300 focus:-translate-y-[1px] focus:border-violet-400 focus:bg-white focus:shadow-lg focus:shadow-violet-100/70 focus:ring-4 focus:ring-violet-100/70"
-                type="date"
-                value={documentDate}
-                onChange={(e) => {
-                  setDocumentDate(e.target.value);
-                  setSaved(false);
-                }}
-              />
+              <span className="flex items-center gap-2 transition-colors group-focus-within:text-violet-700"><CalendarDays className="h-4 w-4" />Ngày {documentType === 'outbound' ? 'xuất kho' : 'hoàn hàng'}</span>
+              <input className="h-11 cursor-pointer rounded-xl border border-slate-200 bg-white/90 px-3 text-sm outline-none transition-all duration-200 hover:border-slate-300 focus:-translate-y-[1px] focus:border-violet-400 focus:bg-white focus:shadow-lg focus:shadow-violet-100/70 focus:ring-4 focus:ring-violet-100/70" type="date" value={documentDate} onChange={(e) => { setDocumentDate(e.target.value); setSaved(false); }} />
             </label>
-
             <div className={`relative overflow-hidden rounded-2xl border ${accentBorder} ${accentBg} p-4`}>
               <div className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full bg-white/70 blur-2xl" />
               <div className="relative flex items-start gap-3">
-                <div className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl shadow-lg ${accentIcon}`}>
-                  <PlatformIcon className="h-4.5 w-4.5" />
-                </div>
-                <div>
-                  <div className={`text-sm font-black ${accentText}`}>{platformLabel}</div>
-                  <div className="mt-1 text-xs leading-5 text-slate-600">
-                    {documentType === 'outbound' ? 'Đang tạo phiếu xuất kho.' : 'Đang tạo phiếu hoàn về kho.'}
-                    {' '}Mỗi phiếu có thể chứa nhiều đơn và nhiều sản phẩm.
-                  </div>
-                </div>
+                <div className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl shadow-lg ${accentIcon}`}><PlatformIcon className="h-4.5 w-4.5" /></div>
+                <div><div className={`text-sm font-black ${accentText}`}>{platformLabel}</div><div className="mt-1 text-xs leading-5 text-slate-600">{documentType === 'outbound' ? 'Đang tạo phiếu xuất kho.' : 'Đang tạo phiếu hoàn về kho.'} Mỗi phiếu có thể chứa nhiều đơn và nhiều sản phẩm.</div></div>
               </div>
             </div>
           </div>
@@ -437,75 +362,31 @@ export function CreateDocumentPage({ type: createType, edit = false }: Props) {
         <div className="relative p-5 md:p-6">
           <div className="mb-5 flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
             <div className="flex items-start gap-3">
-              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-blue-600 via-violet-600 to-fuchsia-600 text-white shadow-lg shadow-violet-500/20">
-                <Layers3 className="h-4.5 w-4.5" />
-              </div>
-              <div>
-                <h2 className="text-lg font-black text-slate-950">Đơn hàng và sản phẩm</h2>
-                <p className="mt-1 text-xs leading-5 text-slate-500">
-                  Bắt buộc: mã đơn, tên sản phẩm, SKU, dung tích/khối lượng và số lượng. Một mã đơn có thể xuất hiện ở nhiều dòng.
-                </p>
-              </div>
+              <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-blue-600 via-violet-600 to-fuchsia-600 text-white shadow-lg shadow-violet-500/20"><Layers3 className="h-4.5 w-4.5" /></div>
+              <div><h2 className="text-lg font-black text-slate-950">Đơn hàng và sản phẩm</h2><p className="mt-1 text-xs leading-5 text-slate-500">Bắt buộc: mã đơn, tên sản phẩm, SKU, dung tích/khối lượng và số lượng. Một mã đơn có thể xuất hiện ở nhiều dòng.</p></div>
             </div>
-
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
               {documentType === 'outbound' && (
                 <>
-                  <input
-                    ref={importFileRef}
-                    type="file"
-                    accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-                    className="hidden"
-                    onChange={(event) => {
-                      const file = event.target.files?.[0];
-                      event.target.value = '';
-                      if (file) void handleImportFile(file);
-                    }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => importFileRef.current?.click()}
-                    disabled={saving || exporting || importing}
-                    className={`group relative inline-flex min-h-10 cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-xl border px-4 py-2 text-sm font-bold transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 ${
-                      isShopee
-                        ? 'border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100 hover:shadow-orange-100'
-                        : 'border-cyan-200 bg-cyan-50 text-cyan-700 hover:bg-cyan-100 hover:shadow-cyan-100'
-                    }`}
-                  >
-                    <FileUp className={`h-4 w-4 ${importing ? 'animate-bounce' : 'transition-transform duration-300 group-hover:-translate-y-0.5'}`} />
-                    {importing ? 'Đang đọc file…' : `Nhập Excel ${isShopee ? 'Shopee' : 'TikTok'}`}
+                  <input ref={importFileRef} type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" className="hidden" onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; if (file) void handleImportFile(file); }} />
+                  <button type="button" onClick={() => importFileRef.current?.click()} disabled={saving || exporting || importing} className={`group relative inline-flex min-h-10 cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-xl border px-4 py-2 text-sm font-bold transition-all duration-300 hover:-translate-y-0.5 hover:shadow-lg active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50 ${isShopee ? 'border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100 hover:shadow-orange-100' : 'border-cyan-200 bg-cyan-50 text-cyan-700 hover:bg-cyan-100 hover:shadow-cyan-100'}`}>
+                    <FileUp className={`h-4 w-4 ${importing ? 'animate-bounce' : 'transition-transform duration-300 group-hover:-translate-y-0.5'}`} />{importing ? 'Đang đọc file…' : `Nhập Excel ${isShopee ? 'Shopee' : 'TikTok'}`}
                   </button>
                 </>
               )}
-
-              <div className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-600 shadow-sm">
-                <span className="h-2 w-2 animate-pulse rounded-full bg-violet-500" />
-                {items.length} dòng · {totalQuantity} sản phẩm
-              </div>
+              <div className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-bold text-slate-600 shadow-sm"><span className="h-2 w-2 animate-pulse rounded-full bg-violet-500" />{items.length} dòng · {totalQuantity} sản phẩm</div>
             </div>
           </div>
 
           <div className="mb-4 flex items-start gap-2 rounded-2xl border border-blue-100 bg-blue-50/60 px-4 py-3 text-xs leading-5 text-blue-800">
-            <Info className="mt-0.5 h-4 w-4 shrink-0" />
-            <div>
-              <span className="font-bold">Một phiếu có thể chứa nhiều đơn hàng.</span> Tạo một nhóm cho mỗi đơn, nhập tổng quyết toán một lần ở đầu nhóm, rồi thêm các dòng sản phẩm bên dưới.
-            </div>
+            <Info className="mt-0.5 h-4 w-4 shrink-0" /><div><span className="font-bold">Một phiếu có thể chứa nhiều đơn hàng.</span> Tạo một nhóm cho mỗi đơn, nhập mã đơn một lần ở đầu nhóm, rồi thêm các dòng sản phẩm bên dưới.</div>
           </div>
 
           {importSummary && (
             <div className="mb-4 overflow-hidden rounded-2xl border border-emerald-200 bg-emerald-50/80 shadow-sm">
               <div className="flex items-start gap-3 px-4 py-3 text-sm text-emerald-800">
-                <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-emerald-500 text-white shadow-lg shadow-emerald-500/20">
-                  <CheckCircle2 className="h-4 w-4" />
-                </div>
-                <div>
-                  <div className="font-bold">Đã đọc {importSummary.fileName} và điền {importSummary.items.length} dòng hợp lệ vào phiếu.</div>
-                  <div className="mt-1 text-xs leading-5 text-emerald-700">
-                    Đã kiểm tra {importSummary.totalRows} dòng đơn hàng. Đã loại {importSummary.cancelledRows} dòng thuộc {importSummary.cancelledOrders} đơn đã huỷ.
-                    {importSummary.skippedRows > 0 ? ` Bỏ qua ${importSummary.skippedRows} dòng thiếu dữ liệu bắt buộc.` : ''}
-                    {' '}Dữ liệu mới chỉ được điền vào form, chưa lưu vào hệ thống cho đến khi Sếp bấm Lưu phiếu.
-                  </div>
-                </div>
+                <div className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-emerald-500 text-white shadow-lg shadow-emerald-500/20"><CheckCircle2 className="h-4 w-4" /></div>
+                <div><div className="font-bold">Đã đọc {importSummary.fileName} và điền {importSummary.items.length} dòng hợp lệ vào phiếu.</div><div className="mt-1 text-xs leading-5 text-emerald-700">Đã kiểm tra {importSummary.totalRows} dòng đơn hàng. Đã loại {importSummary.cancelledRows} dòng thuộc {importSummary.cancelledOrders} đơn đã huỷ.{importSummary.skippedRows > 0 ? ` Bỏ qua ${importSummary.skippedRows} dòng thiếu dữ liệu bắt buộc.` : ''} Dữ liệu mới chỉ được điền vào form, chưa lưu vào hệ thống cho đến khi Sếp bấm Lưu phiếu.</div></div>
               </div>
             </div>
           )}
@@ -514,153 +395,55 @@ export function CreateDocumentPage({ type: createType, edit = false }: Props) {
             <div className="space-y-5">
               {orderGroups.map((group, groupIndex) => (
                 <section key={group.key} className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50/70">
-                  <div className="grid gap-4 border-b border-slate-200 bg-white p-4 md:grid-cols-[1fr_1fr_auto] md:items-end">
-                    <div className="flex items-center gap-2 md:col-span-3">
+                  <div className="grid gap-4 border-b border-slate-200 bg-white p-4 md:grid-cols-[1fr_auto] md:items-end">
+                    <div className="flex items-center gap-2">
                       <div className="grid h-8 w-8 place-items-center rounded-lg bg-violet-100 text-sm font-black text-violet-700">{groupIndex + 1}</div>
-                      <div>
-                        <h3 className="font-black text-slate-900">Đơn hàng {groupIndex + 1}</h3>
-                        <p className="text-xs text-slate-500">{group.itemIndexes.length} dòng sản phẩm</p>
-                      </div>
+                      <div><h3 className="font-black text-slate-900">Đơn hàng {groupIndex + 1}</h3><p className="text-xs text-slate-500">{group.itemIndexes.length} dòng sản phẩm</p></div>
                     </div>
-                    <Input label="Mã đơn hàng" required value={group.orderCode}
-                      onChange={(e) => {
-                        const nextCode = e.target.value;
-                        const nextGroupId = nextCode.trim() ? `order:${nextCode.trim()}` : group.key;
-                        setItems((current) => current.map((row, idx) => group.itemIndexes.includes(idx)
-                          ? { ...row, orderCode: nextCode, orderGroupId: nextGroupId }
-                          : row));
-                        setSaved(false); setError(''); setImportSummary(null);
-                      }} placeholder="Mã đơn TikTok / Shopee" />
-                    <Input label="Tổng quyết toán đơn hàng (₫)" type="number" min={0} step={1}
-                      value={group.settlementAmount == null ? '' : String(group.settlementAmount)}
-                      onChange={(e) => {
-                        const amount = e.target.value === '' ? null : Number(e.target.value);
-                        setItems((current) => current.map((row, idx) => group.itemIndexes.includes(idx)
-                          ? { ...row, orderGroupId: group.key, orderSettlementAmount: amount }
-                          : row));
-                        setSaved(false); setError('');
-                      }} placeholder="Nhập số tiền sàn quyết toán cho cả đơn" />
+                    <Input label="Mã đơn hàng" required value={group.orderCode} onChange={(e) => {
+                      const nextCode = e.target.value;
+                      const nextGroupId = nextCode.trim() ? `order:${nextCode.trim()}` : group.key;
+                      setItems((current) => current.map((row, idx) => group.itemIndexes.includes(idx) ? { ...row, orderCode: nextCode, orderGroupId: nextGroupId } : row));
+                      setSaved(false); setError(''); setImportSummary(null);
+                    }} placeholder="Mã đơn TikTok / Shopee" />
                     <button type="button" onClick={() => {
-                      setItems((current) => current.filter((_, idx) => !group.itemIndexes.includes(idx)).length
-                        ? current.filter((_, idx) => !group.itemIndexes.includes(idx))
-                        : [emptyItem()]);
+                      setItems((current) => { const next = current.filter((_, idx) => !group.itemIndexes.includes(idx)); return next.length ? next : [emptyItem()]; });
                       setSaved(false); setError('');
-                    }} disabled={orderGroups.length === 1}
-                      className="h-11 cursor-pointer rounded-xl border border-rose-200 px-3 text-sm font-bold text-rose-600 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-30">
-                      Xóa đơn
-                    </button>
+                    }} disabled={orderGroups.length === 1} className="h-11 cursor-pointer rounded-xl border border-rose-200 px-3 text-sm font-bold text-rose-600 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-30 md:col-start-2">Xóa đơn</button>
                   </div>
                   <div className="space-y-3 p-4">
                     {group.itemIndexes.map((itemIndex, rowIndex) => (
-                      <ProductRow key={`${itemIndex}-${items[itemIndex].sku}`} index={rowIndex} item={items[itemIndex]}
-                        onChange={(next) => updateItem(itemIndex, next)}
-                        onRemove={() => removeItem(itemIndex)} canRemove={items.length > 1}
-                        showVariant hideOrderCode showPricing />
+                      <ProductRow key={`${itemIndex}-${items[itemIndex].sku}`} index={rowIndex} item={items[itemIndex]} onChange={(next) => updateItem(itemIndex, next)} onRemove={() => removeItem(itemIndex)} canRemove={items.length > 1} showVariant hideOrderCode />
                     ))}
-                    {(() => {
-                      const minimumTotal = group.itemIndexes.reduce((sum, idx) => {
-                        const item = items[idx];
-                        return sum + (item.minimumSettlement ?? 0) * item.quantity;
-                      }, 0);
-                      const saleTotal = group.itemIndexes.reduce((sum, idx) => {
-                        const item = items[idx];
-                        return sum + (item.salePrice ?? 0) * item.quantity;
-                      }, 0);
-                      const settlement = group.settlementAmount;
-                      const hasMinimum = group.itemIndexes.some((idx) => items[idx].minimumSettlement !== null);
-                      const money = (value: number) => new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND', maximumFractionDigits: 0 }).format(value);
-                      return (
-                        <div className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 sm:grid-cols-3">
-                          <div><div className="text-xs font-semibold text-slate-500">Tổng giá bán theo số lượng</div><div className="mt-1 font-black text-slate-800">{money(saleTotal)}</div></div>
-                          <div><div className="text-xs font-semibold text-slate-500">Mức thu tối thiểu của đơn</div><div className="mt-1 font-black text-slate-800">{money(minimumTotal)}</div></div>
-                          <div>
-                            <div className="text-xs font-semibold text-slate-500">Đối chiếu quyết toán</div>
-                            {settlement == null ? (
-                              <div className="mt-1 text-sm font-bold text-slate-500">Chưa nhập tổng quyết toán</div>
-                            ) : !hasMinimum ? (
-                              <div className="mt-1 text-sm font-bold text-slate-500">Chưa nhập mức tối thiểu sản phẩm</div>
-                            ) : settlement >= minimumTotal ? (
-                              <div className="mt-1 text-sm font-black text-emerald-700">Đạt mức tối thiểu · dư {money(settlement - minimumTotal)}</div>
-                            ) : (
-                              <div className="mt-1 text-sm font-black text-rose-700">Thiếu {money(minimumTotal - settlement)} so với mức tối thiểu</div>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })()}
                     <button type="button" onClick={() => {
-                      setItems((current) => [...current, { ...emptyItem(), orderGroupId: group.key, orderCode: group.orderCode, orderSettlementAmount: group.settlementAmount, salePrice: null, minimumSettlement: null }]);
+                      setItems((current) => [...current, { ...emptyItem(), orderGroupId: group.key, orderCode: group.orderCode }]);
                       setSaved(false); setError(''); setImportSummary(null);
-                    }} className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-dashed border-violet-300 bg-white px-3 py-2 text-sm font-bold text-violet-700 hover:bg-violet-50">
-                      <Plus className="h-4 w-4" /> Thêm sản phẩm vào đơn này
-                    </button>
+                    }} className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-dashed border-violet-300 bg-white px-3 py-2 text-sm font-bold text-violet-700 hover:bg-violet-50"><Plus className="h-4 w-4" />Thêm sản phẩm vào đơn này</button>
                   </div>
                 </section>
               ))}
-              <button type="button" onClick={addItem}
-                className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-dashed border-blue-300 bg-blue-50 px-4 py-3 text-sm font-bold text-blue-700 hover:bg-blue-100">
-                <Plus className="h-4 w-4" /> Tạo đơn hàng mới
-              </button>
+              <button type="button" onClick={addItem} className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-dashed border-blue-300 bg-blue-50 px-4 py-3 text-sm font-bold text-blue-700 hover:bg-blue-100"><Plus className="h-4 w-4" />Tạo đơn hàng mới</button>
             </div>
           ) : (
             <>
-              <div className="space-y-3">
-                {items.map((item, index) => (
-                  <ProductRow key={`${index}-${item.sku}`} index={index} item={item}
-                    onChange={(next) => updateItem(index, next)} onRemove={() => removeItem(index)}
-                    canRemove={items.length > 1} showVariant />
-                ))}
-              </div>
-              <button type="button" onClick={addItem}
-                className="group mt-4 inline-flex cursor-pointer items-center gap-2 rounded-xl border border-dashed border-violet-300 bg-violet-50/50 px-4 py-2.5 text-sm font-bold text-violet-700 hover:border-violet-400 hover:bg-violet-100">
-                <Plus className="h-4 w-4" /> Thêm sản phẩm
-              </button>
+              <div className="space-y-3">{items.map((item, index) => <ProductRow key={`${index}-${item.sku}`} index={index} item={item} onChange={(next) => updateItem(index, next)} onRemove={() => removeItem(index)} canRemove={items.length > 1} showVariant />)}</div>
+              <button type="button" onClick={addItem} className="group mt-4 inline-flex cursor-pointer items-center gap-2 rounded-xl border border-dashed border-violet-300 bg-violet-50/50 px-4 py-2.5 text-sm font-bold text-violet-700 hover:border-violet-400 hover:bg-violet-100"><Plus className="h-4 w-4" />Thêm sản phẩm</button>
             </>
           )}
         </div>
 
         {(error || saved) && (
           <div className="relative border-t border-slate-100 px-5 py-4 md:px-6">
-            {error && (
-              <div className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 shadow-sm">
-                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                {error}
-              </div>
-            )}
-            {saved && !error && (
-              <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700 shadow-sm">
-                <CheckCircle2 className="h-4 w-4 shrink-0" />
-                {editId ? 'Đã cập nhật phiếu thành công.' : 'Đã lưu phiếu thành công vào hệ thống.'}
-              </div>
-            )}
+            {error && <div className="flex items-start gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700 shadow-sm"><AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />{error}</div>}
+            {saved && !error && <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm font-semibold text-emerald-700 shadow-sm"><CheckCircle2 className="h-4 w-4 shrink-0" />{editId ? 'Đã cập nhật phiếu thành công.' : 'Đã lưu phiếu thành công vào hệ thống.'}</div>}
           </div>
         )}
 
         <div className="relative flex flex-col gap-3 border-t border-slate-100 bg-gradient-to-r from-slate-50/90 via-white to-violet-50/60 p-5 sm:flex-row sm:items-center sm:justify-between md:p-6">
-          <button
-            type="button"
-            onClick={handleResetForm}
-            disabled={saving || exporting || importing}
-            className="group inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold text-rose-600 transition-all duration-300 hover:-translate-y-0.5 hover:bg-rose-50 hover:shadow-md active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <Trash2 className="h-4 w-4 transition-transform duration-300 group-hover:rotate-6" />
-            Xoá toàn bộ
-          </button>
-
+          <button type="button" onClick={() => setShowConfirmReset(true)} disabled={saving || exporting || importing} className="group inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold text-rose-600 transition-all duration-300 hover:-translate-y-0.5 hover:bg-rose-50 hover:shadow-md active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-50"><Trash2 className="h-4 w-4 transition-transform duration-300 group-hover:rotate-6" />Xoá toàn bộ</button>
           <div className="flex flex-col gap-3 sm:flex-row">
-            <Button
-              variant="secondary"
-              onClick={() => void exportExcel()}
-              loading={exporting}
-              disabled={Boolean(validateDocument(input)) || saving || importing}
-            >
-              <Download className="h-4 w-4" />
-              Xuất Excel
-            </Button>
-            <Button onClick={() => void save()} loading={saving} disabled={exporting || importing || saved}>
-              <Save className="h-4 w-4" />
-              {saved ? 'Đã lưu' : editId ? 'Lưu thay đổi' : 'Lưu phiếu'}
-            </Button>
+            <Button variant="secondary" onClick={() => void exportExcel()} loading={exporting} disabled={Boolean(validateDocument(input)) || saving || importing}><Download className="h-4 w-4" />Xuất Excel</Button>
+            <Button onClick={() => void save()} loading={saving} disabled={exporting || importing || saved}><Save className="h-4 w-4" />{saved ? 'Đã lưu' : editId ? 'Lưu thay đổi' : 'Lưu phiếu'}</Button>
           </div>
         </div>
       </section>
@@ -670,32 +453,10 @@ export function CreateDocumentPage({ type: createType, edit = false }: Props) {
           <div className="relative w-full max-w-md overflow-hidden rounded-[24px] border border-white/70 bg-white p-6 shadow-2xl shadow-rose-950/15">
             <div className="pointer-events-none absolute -right-14 -top-14 h-36 w-36 rounded-full bg-rose-200/50 blur-3xl" />
             <div className="relative flex items-start gap-4">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-rose-100 text-rose-600 shadow-sm">
-                <AlertCircle className="h-6 w-6" />
-              </div>
-              <div className="pt-1">
-                <div className="mb-1 inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-[0.16em] text-rose-500">
-                  <Sparkles className="h-3 w-3" />
-                  Làm mới dữ liệu
-                </div>
-                <h3 className="text-lg font-black text-slate-900">Xác nhận xoá toàn bộ</h3>
-                <p className="mt-2 text-sm leading-relaxed text-slate-500">
-                  Sếp có chắc chắn muốn xoá toàn bộ dữ liệu đang nhập để làm lại không? Thao tác này không thể hoàn tác.
-                </p>
-              </div>
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-rose-100 text-rose-600 shadow-sm"><AlertCircle className="h-6 w-6" /></div>
+              <div className="pt-1"><div className="mb-1 inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-[0.16em] text-rose-500"><Sparkles className="h-3 w-3" />Làm mới dữ liệu</div><h3 className="text-lg font-black text-slate-900">Xác nhận xoá toàn bộ</h3><p className="mt-2 text-sm leading-relaxed text-slate-500">Sếp có chắc chắn muốn xoá toàn bộ dữ liệu đang nhập để làm lại không? Thao tác này không thể hoàn tác.</p></div>
             </div>
-            <div className="relative mt-6 flex justify-end gap-3 border-t border-slate-100 pt-5">
-              <Button variant="secondary" onClick={() => setShowConfirmReset(false)}>
-                Huỷ bỏ
-              </Button>
-              <button
-                type="button"
-                onClick={confirmReset}
-                className="inline-flex cursor-pointer items-center justify-center rounded-xl bg-gradient-to-r from-rose-600 to-pink-600 px-5 py-2.5 text-sm font-bold text-white shadow-lg shadow-rose-500/20 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-xl active:scale-[0.98]"
-              >
-                Xác nhận xoá
-              </button>
-            </div>
+            <div className="relative mt-6 flex justify-end gap-3 border-t border-slate-100 pt-5"><Button variant="secondary" onClick={() => setShowConfirmReset(false)}>Huỷ bỏ</Button><button type="button" onClick={confirmReset} className="inline-flex cursor-pointer items-center justify-center rounded-xl bg-gradient-to-r from-rose-600 to-pink-600 px-5 py-2.5 text-sm font-bold text-white shadow-lg shadow-rose-500/20 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-xl active:scale-[0.98]">Xác nhận xoá</button></div>
           </div>
         </div>
       )}
