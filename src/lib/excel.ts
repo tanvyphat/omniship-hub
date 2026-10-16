@@ -1,6 +1,7 @@
 import ExcelJS from 'exceljs';
-import type {DocumentInput} from '../types/document';
-import {getTodayISO} from './date';
+import type { DocumentInput, DocumentItemInput } from '../types/document';
+import { getTodayISO } from './date';
+import { calculateProductSettlements, formatVND } from './settlement';
 
 const navy = '0F172A';
 const blue = '2563EB';
@@ -8,540 +9,64 @@ const lightBlue = 'EFF6FF';
 const slate = '475569';
 const border = 'CBD5E1';
 
-function addBorder(row: ExcelJS.Row) {
-    row.eachCell((cell) => {
-        cell.border = {
-            top: {style: 'thin', color: {argb: border}},
-            left: {style: 'thin', color: {argb: border}},
-            bottom: {style: 'thin', color: {argb: border}},
-            right: {style: 'thin', color: {argb: border}},
-        };
-    });
-}
-
-function platformLabel(platform: DocumentInput['platform']) {
-    return platform === 'tiktok' ? 'TikTok Shop' : 'Shopee';
-}
-
-/** Parse ISO (YYYY-MM-DD) or Vietnamese (D/M/YYYY) dates for chronological export sorting. */
-function getBulkExportDateParts(value: string): {year: number; month: number; day: number} | null {
-    const normalized = value.trim();
-    const iso = normalized.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
-    const vn = normalized.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-    const shortVn = normalized.match(/^(\d{1,2})\/(\d{1,2})$/);
-    let year: number; let month: number; let day: number;
-    if (iso) { year = Number(iso[1]); month = Number(iso[2]); day = Number(iso[3]); }
-    else if (vn) { day = Number(vn[1]); month = Number(vn[2]); year = Number(vn[3]); }
-    else if (shortVn) { day = Number(shortVn[1]); month = Number(shortVn[2]); year = new Date().getFullYear(); }
-    else return null;
-    const check = new Date(Date.UTC(year, month - 1, day));
-    if (check.getUTCFullYear() !== year || check.getUTCMonth() !== month - 1 || check.getUTCDate() !== day) return null;
-    return {year, month, day};
-}
-
-function bulkExportDateSortKey(value: string): number {
-    const parts = getBulkExportDateParts(value);
-    if (parts) return Date.UTC(parts.year, parts.month - 1, parts.day);
-    const parsed = Date.parse(value);
-    return Number.isNaN(parsed) ? Number.MAX_SAFE_INTEGER : parsed;
-}
-
-function normalizeBulkExportDate(value: string): string {
-    const parts = getBulkExportDateParts(value);
-    if (!parts) return value.trim();
-    return String(parts.year).padStart(4, '0') + '-' + String(parts.month).padStart(2, '0') + '-' + String(parts.day).padStart(2, '0');
-}
-
-function formatBulkExportDate(value: string): string {
-    const parts = getBulkExportDateParts(value);
-    if (!parts) return value;
-    return String(parts.day).padStart(2, '0') + '/' + String(parts.month).padStart(2, '0') + '/' + parts.year;
-}
+function addBorder(row: ExcelJS.Row) { row.eachCell((cell) => { cell.border = { top: { style: 'thin', color: { argb: border } }, left: { style: 'thin', color: { argb: border } }, bottom: { style: 'thin', color: { argb: border } }, right: { style: 'thin', color: { argb: border } } }; }); }
+function platformLabel(platform: DocumentInput['platform']) { return platform === 'tiktok' ? 'TikTok Shop' : 'Shopee'; }
+function groupItems(items: DocumentItemInput[]) { const groups = new Map<string, DocumentItemInput[]>(); for (const item of items) { const key = item.orderCode.trim() || `__missing_${groups.size}`; const current = groups.get(key); if (current) current.push(item); else groups.set(key, [item]); } return Array.from(groups.entries()); }
+function getBulkExportDateParts(value: string): { year: number; month: number; day: number } | null { const normalized = value.trim(); const iso = normalized.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/); const vn = normalized.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/); const shortVn = normalized.match(/^(\d{1,2})\/(\d{1,2})$/); let year: number; let month: number; let day: number; if (iso) { year = Number(iso[1]); month = Number(iso[2]); day = Number(iso[3]); } else if (vn) { day = Number(vn[1]); month = Number(vn[2]); year = Number(vn[3]); } else if (shortVn) { day = Number(shortVn[1]); month = Number(shortVn[2]); year = new Date().getFullYear(); } else return null; const check = new Date(Date.UTC(year, month - 1, day)); if (check.getUTCFullYear() !== year || check.getUTCMonth() !== month - 1 || check.getUTCDate() !== day) return null; return { year, month, day }; }
+function bulkExportDateSortKey(value: string): number { const parts = getBulkExportDateParts(value); if (parts) return Date.UTC(parts.year, parts.month - 1, parts.day); const parsed = Date.parse(value); return Number.isNaN(parsed) ? Number.MAX_SAFE_INTEGER : parsed; }
+function normalizeBulkExportDate(value: string): string { const parts = getBulkExportDateParts(value); if (!parts) return value.trim(); return `${String(parts.year).padStart(4, '0')}-${String(parts.month).padStart(2, '0')}-${String(parts.day).padStart(2, '0')}`; }
+function formatBulkExportDate(value: string): string { const parts = getBulkExportDateParts(value); if (!parts) return value; return `${String(parts.day).padStart(2, '0')}/${String(parts.month).padStart(2, '0')}/${parts.year}`; }
+function styleHeader(row: ExcelJS.Row, fill = blue) { row.eachCell({ includeEmpty: true }, (cell) => { cell.font = { name: 'Times New Roman', bold: true, color: { argb: 'FFFFFF' } }; cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: fill } }; cell.alignment = { vertical: 'middle', horizontal: 'center', wrapText: true }; }); addBorder(row); }
+function finalizeWorkbook(workbook: ExcelJS.Workbook) { workbook.eachSheet((worksheet) => { worksheet.eachRow({ includeEmpty: false }, (row) => row.eachCell({ includeEmpty: false }, (cell) => { cell.font = { ...(cell.font ?? {}), name: 'Times New Roman' }; })); }); }
+async function downloadWorkbook(workbook: ExcelJS.Workbook, filename: string) { const buffer = await workbook.xlsx.writeBuffer(); const blob = new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }); const url = URL.createObjectURL(blob); const anchor = document.createElement('a'); anchor.href = url; anchor.download = filename; anchor.click(); URL.revokeObjectURL(url); }
 
 export async function exportDocumentExcel(input: DocumentInput) {
-    const workbook = new ExcelJS.Workbook();
-    workbook.creator = 'OmniShip Hub';
-    workbook.created = new Date();
+  const workbook = new ExcelJS.Workbook(); workbook.creator = 'OmniShip Hub'; workbook.created = new Date();
+  const sheet = workbook.addWorksheet('PHIEU', { views: [{ showGridLines: false }] });
+  sheet.columns = [{ width: 6 }, { width: 14 }, { width: 24 }, { width: 32 }, { width: 24 }, { width: 22 }, { width: 18 }, { width: 12 }, { width: 20 }, { width: 20 }, { width: 20 }];
+  sheet.mergeCells('A1:K1'); sheet.getCell('A1').value = input.type === 'outbound' ? 'PHIẾU XUẤT HÀNG' : 'PHIẾU HOÀN HÀNG'; sheet.getCell('A1').font = { name: 'Times New Roman', size: 20, bold: true, color: { argb: 'FFFFFF' } }; sheet.getCell('A1').fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: navy } }; sheet.getCell('A1').alignment = { vertical: 'middle', horizontal: 'center' }; sheet.getRow(1).height = 32;
+  sheet.mergeCells('A3:B3'); sheet.getCell('A3').value = 'Nền tảng'; sheet.mergeCells('C3:K3'); sheet.getCell('C3').value = platformLabel(input.platform); sheet.mergeCells('A4:B4'); sheet.getCell('A4').value = 'Ngày'; sheet.mergeCells('C4:K4'); sheet.getCell('C4').value = input.documentDate;
+  for (let rowNumber = 3; rowNumber <= 4; rowNumber += 1) { sheet.getRow(rowNumber).eachCell({ includeEmpty: true }, (cell) => { cell.border = { top: { style: 'thin', color: { argb: border } }, left: { style: 'thin', color: { argb: border } }, bottom: { style: 'thin', color: { argb: border } }, right: { style: 'thin', color: { argb: border } } }; cell.alignment = { vertical: 'middle' }; }); }
+  ['A3', 'A4'].forEach((ref) => { sheet.getCell(ref).font = { name: 'Times New Roman', bold: true, color: { argb: slate } }; sheet.getCell(ref).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: lightBlue } }; });
+  const headers = ['STT', 'Ngày', 'Mã đơn hàng', 'Tên sản phẩm', 'SKU', 'Dung tích / Khối lượng', 'Hương / Màu', 'Số lượng', 'Tổng quyết toán đơn', 'Quyết toán sản phẩm', 'Lời / Lỗ']; const header = sheet.addRow(headers); styleHeader(header); header.height = 34;
+  const sortedItems = [...input.items].sort((a, b) => (a.orderCode || '').localeCompare(b.orderCode || '')); const rowResults = new Map<number, { settlement: number | null; profitLoss: number | null; totalSettlement: number | null }>(); const groups = groupItems(sortedItems); let offset = 0;
+  for (const [, group] of groups) { const totalSettlement = group[0]?.orderSettlementAmount ?? null; const results = calculateProductSettlements(group, totalSettlement); results.forEach((result, index) => rowResults.set(offset + index, { settlement: result.settlementAmount, profitLoss: result.profitLoss, totalSettlement })); offset += group.length; }
+  let currentOrderCode = ''; let startMergeRow = -1;
+  sortedItems.forEach((item, index) => { const result = rowResults.get(index) ?? { settlement: null, profitLoss: null, totalSettlement: item.orderSettlementAmount }; const row = sheet.addRow([index + 1, input.documentDate, item.orderCode, item.productName, item.sku, item.unit, item.variant || '-', item.quantity, result.totalSettlement, result.settlement, result.profitLoss]); row.alignment = { vertical: 'middle', wrapText: true }; row.getCell(1).alignment = { horizontal: 'center', vertical: 'middle' }; row.getCell(2).alignment = { horizontal: 'center', vertical: 'middle' }; row.getCell(3).alignment = { horizontal: 'center', vertical: 'middle', wrapText: true }; row.getCell(8).alignment = { horizontal: 'center', vertical: 'middle' }; row.getCell(9).numFmt = '#,##0'; row.getCell(10).numFmt = '#,##0'; row.getCell(11).numFmt = '#,##0;[Red]-#,##0'; if (index % 2 === 1) row.eachCell({ includeEmpty: true }, (cell) => { cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'F8FAFC' } }; }); addBorder(row); if (item.orderCode !== currentOrderCode) { if (startMergeRow !== -1 && row.number - 1 > startMergeRow) { sheet.mergeCells(startMergeRow, 3, row.number - 1, 3); sheet.mergeCells(startMergeRow, 9, row.number - 1, 9); } currentOrderCode = item.orderCode; startMergeRow = row.number; } });
+  const lastRowIndex = sheet.rowCount; if (startMergeRow !== -1 && lastRowIndex > startMergeRow) { sheet.mergeCells(startMergeRow, 3, lastRowIndex, 3); sheet.mergeCells(startMergeRow, 9, lastRowIndex, 9); }
+  const footerRow = sheet.rowCount + 2; sheet.mergeCells(`A${footerRow}:K${footerRow}`); sheet.getCell(`A${footerRow}`).value = `Xuất file: ${getTodayISO()} · OmniShip Hub`; sheet.getCell(`A${footerRow}`).font = { name: 'Times New Roman', italic: true, size: 9, color: { argb: slate } };
 
-    // ==========================================
-    // SHEET 1: PHIẾU (CHI TIẾT THEO ĐƠN HÀNG)
-    // ==========================================
-    const includeVariant = true;
-    const sheet = workbook.addWorksheet('PHIEU', {views: [{showGridLines: false}]});
+  const summarySheet = workbook.addWorksheet('TONG_HOP_SP', { views: [{ showGridLines: false }] }); summarySheet.columns = [{ header: 'STT', key: 'no', width: 8 }, { header: 'Tên sản phẩm', key: 'product', width: 40 }, { header: 'SKU', key: 'sku', width: 25 }, { header: 'Dung tích / Khối lượng', key: 'unit', width: 25 }, { header: 'Hương / Màu', key: 'variant', width: 20 }, { header: 'Tổng xuất', key: 'totalQty', width: 15 }, { header: 'Tổng quyết toán', key: 'settlement', width: 20 }, { header: 'Tổng mức tối thiểu', key: 'minimum', width: 20 }, { header: 'Lời / Lỗ', key: 'profitLoss', width: 20 }]; styleHeader(summarySheet.getRow(1));
+  const productSummaryMap = new Map<string, { productName: string; sku: string; unit: string; variant: string; quantity: number; settlement: number; minimum: number; profitLoss: number }>();
+  for (const item of input.items) { const key = `${item.sku}_${item.productName}_${item.variant || '-'}_${item.unit}`; const group = groupItems(input.items).find(([, rows]) => rows.includes(item)); const groupRows = group?.[1] ?? [item]; const result = calculateProductSettlements(groupRows, item.orderSettlementAmount)[groupRows.indexOf(item)] ?? { settlementAmount: null, minimumAmount: null, profitLoss: null }; const current = productSummaryMap.get(key) ?? { productName: item.productName, sku: item.sku, unit: item.unit, variant: item.variant || '-', quantity: 0, settlement: 0, minimum: 0, profitLoss: 0 }; current.quantity += Number(item.quantity) || 0; current.settlement += result.settlementAmount ?? 0; current.minimum += result.minimumAmount ?? 0; current.profitLoss += result.profitLoss ?? 0; productSummaryMap.set(key, current); }
+  const summaryItems = Array.from(productSummaryMap.values()).sort((a, b) => a.productName.localeCompare(b.productName)); let totalSummaryQty = 0; let totalSettlement = 0; let totalMinimum = 0; let totalProfitLoss = 0;
+  summaryItems.forEach((item, index) => { totalSummaryQty += item.quantity; totalSettlement += item.settlement; totalMinimum += item.minimum; totalProfitLoss += item.profitLoss; const row = summarySheet.addRow({ no: index + 1, product: item.productName, sku: item.sku, unit: item.unit, variant: item.variant, totalQty: item.quantity, settlement: item.settlement, minimum: item.minimum, profitLoss: item.profitLoss }); row.getCell('totalQty').alignment = { horizontal: 'center' }; row.getCell('settlement').numFmt = '#,##0'; row.getCell('minimum').numFmt = '#,##0'; row.getCell('profitLoss').numFmt = '#,##0;[Red]-#,##0'; addBorder(row); });
+  const summaryTotalRow = summarySheet.addRow(['', 'TỔNG CỘNG TẤT CẢ SẢN PHẨM', '', '', '', totalSummaryQty, totalSettlement, totalMinimum, totalProfitLoss]); summaryTotalRow.font = { name: 'Times New Roman', bold: true }; summaryTotalRow.getCell(6).numFmt = '#,##0'; summaryTotalRow.getCell(7).numFmt = '#,##0'; summaryTotalRow.getCell(8).numFmt = '#,##0'; summaryTotalRow.getCell(9).numFmt = '#,##0;[Red]-#,##0'; addBorder(summaryTotalRow);
 
-    sheet.columns = [
-        {width: 6}, {width: 14}, {width: 24}, {width: 32}, {width: 30}, {width: 22}, {width: 18}, {width: 15},
-    ];
-
-    const lastColumn = 'H';
-    sheet.mergeCells(`A1:${lastColumn}1`);
-    sheet.getCell('A1').value = input.type === 'outbound' ? 'PHIẾU XUẤT HÀNG' : 'PHIẾU HOÀN HÀNG';
-    sheet.getCell('A1').font = {name: 'Times New Roman', size: 20, bold: true, color: {argb: 'FFFFFF'}};
-    sheet.getCell('A1').fill = {type: 'pattern', pattern: 'solid', fgColor: {argb: navy}};
-    sheet.getCell('A1').alignment = {vertical: 'middle', horizontal: 'center'};
-    sheet.getRow(1).height = 32;
-
-    if (includeVariant) {
-        sheet.mergeCells('A3:B3');
-        sheet.getCell('A3').value = 'Nền tảng';
-        sheet.mergeCells('C3:H3');
-        sheet.getCell('C3').value = platformLabel(input.platform);
-        sheet.mergeCells('A4:B4');
-        sheet.getCell('A4').value = 'Ngày';
-        sheet.mergeCells('C4:H4');
-        sheet.getCell('C4').value = input.documentDate;
-    } else {
-        sheet.mergeCells('A3:B3');
-        sheet.getCell('A3').value = 'Nền tảng';
-        sheet.mergeCells('C3:F3');
-        sheet.getCell('C3').value = platformLabel(input.platform);
-        sheet.mergeCells('A4:B4');
-        sheet.getCell('A4').value = 'Ngày';
-        sheet.mergeCells('C4:F4');
-        sheet.getCell('C4').value = input.documentDate;
-    }
-
-    for (let rowNumber = 3; rowNumber <= 4; rowNumber += 1) {
-        sheet.getRow(rowNumber).eachCell({includeEmpty: true}, (cell) => {
-            cell.border = {
-                top: {style: 'thin', color: {argb: border}},
-                left: {style: 'thin', color: {argb: border}},
-                bottom: {style: 'thin', color: {argb: border}},
-                right: {style: 'thin', color: {argb: border}},
-            };
-            cell.alignment = {vertical: 'middle'};
-        });
-    }
-
-    ['A3', 'A4'].forEach((ref) => {
-        sheet.getCell(ref).font = {name: 'Times New Roman', bold: true, color: {argb: slate}};
-        sheet.getCell(ref).fill = {type: 'pattern', pattern: 'solid', fgColor: {argb: lightBlue}};
-    });
-
-    const headers = ['STT', 'Ngày', 'Mã đơn hàng', 'Tên sản phẩm', 'SKU', 'Dung tích / Khối lượng', 'Hương / Màu', 'Số lượng'];
-    const header = sheet.addRow(headers);
-    header.eachCell({includeEmpty: true}, (cell) => {
-        cell.font = {name: 'Times New Roman', bold: true, color: {argb: 'FFFFFF'}};
-        cell.fill = {type: 'pattern', pattern: 'solid', fgColor: {argb: blue}};
-        cell.alignment = {vertical: 'middle', horizontal: 'center', wrapText: true};
-    });
-    header.height = 30;
-    addBorder(header);
-
-    const sortedItems = [...input.items].sort((a, b) => (a.orderCode || '').localeCompare(b.orderCode || ''));
-
-    let currentOrderCode = '';
-    let startMergeRow = -1;
-
-    sortedItems.forEach((item, index) => {
-        const rowIndex = header.number + 1 + index;
-        const row = sheet.addRow([index + 1, input.documentDate, item.orderCode, item.productName, item.sku, item.unit, item.variant || '-', item.quantity]);
-
-        row.alignment = {vertical: 'middle', wrapText: true};
-
-        if (index % 2 === 1) {
-            row.eachCell({includeEmpty: true}, (cell) => {
-                cell.fill = {type: 'pattern', pattern: 'solid', fgColor: {argb: 'F8FAFC'}};
-            });
-        }
-
-        row.getCell(1).alignment = {horizontal: 'center', vertical: 'middle'};
-        row.getCell(2).alignment = {horizontal: 'center', vertical: 'middle'};
-        row.getCell(3).alignment = {horizontal: 'center', vertical: 'middle', wrapText: true};
-        row.getCell(8).alignment = {horizontal: 'center', vertical: 'middle'};
-
-        addBorder(row);
-
-        if (item.orderCode !== currentOrderCode) {
-            if (startMergeRow !== -1 && rowIndex - 1 > startMergeRow) {
-                sheet.mergeCells(startMergeRow, 3, rowIndex - 1, 3);
-            }
-            currentOrderCode = item.orderCode;
-            startMergeRow = rowIndex;
-        }
-    });
-
-    const lastRowIndex = header.number + sortedItems.length;
-    if (startMergeRow !== -1 && lastRowIndex > startMergeRow) {
-        sheet.mergeCells(startMergeRow, 3, lastRowIndex, 3);
-    }
-
-    const footerRow = sheet.rowCount + 2;
-    sheet.mergeCells(`A${footerRow}:${lastColumn}${footerRow}`);
-    sheet.getCell(`A${footerRow}`).value = `Xuất file: ${getTodayISO()} · OmniShip Hub`;
-    sheet.getCell(`A${footerRow}`).font = {name: 'Times New Roman', italic: true, size: 9, color: {argb: slate}};
-
-
-    // ==========================================
-    // SHEET 2: TỔNG HỢP SẢN PHẨM (GOM NHÓM THEO SKU)
-    // ==========================================
-    const summarySheet = workbook.addWorksheet('TONG_HOP_SP', {views: [{showGridLines: false}]});
-    summarySheet.columns = [
-        {header: 'STT', key: 'no', width: 8},
-        {header: 'Tên sản phẩm', key: 'product', width: 40},
-        {header: 'SKU', key: 'sku', width: 25},
-        {header: 'Dung tích / Khối lượng', key: 'unit', width: 25},
-        {header: 'Hương / Màu', key: 'variant', width: 20},
-        {header: 'Tổng xuất', key: 'totalQty', width: 15},
-    ];
-
-    const summaryHeader = summarySheet.getRow(1);
-    summaryHeader.eachCell({includeEmpty: true}, (cell) => {
-        cell.font = {name: 'Times New Roman', bold: true, color: {argb: 'FFFFFF'}};
-        cell.fill = {type: 'pattern', pattern: 'solid', fgColor: {argb: blue}};
-        cell.alignment = {vertical: 'middle', horizontal: 'center', wrapText: true};
-    });
-    summaryHeader.height = 30;
-
-    // Thuật toán gom nhóm sản phẩm
-    const productSummaryMap = new Map<string, any>();
-    input.items.forEach((item) => {
-        // Tạo khóa duy nhất kết hợp SKU, Tên, Phân loại, Đơn vị để gom nhóm chính xác tuyệt đối
-        const key = `${item.sku}_${item.productName}_${item.variant || '-'}_${item.unit}`;
-
-        if (!productSummaryMap.has(key)) {
-            productSummaryMap.set(key, {
-                productName: item.productName,
-                sku: item.sku,
-                unit: item.unit,
-                variant: item.variant || '-',
-                quantity: 0
-            });
-        }
-        productSummaryMap.get(key).quantity += Number(item.quantity) || 0;
-    });
-
-    const summaryItems = Array.from(productSummaryMap.values());
-    // Sắp xếp danh sách tổng hợp theo Tên sản phẩm hoặc SKU cho dễ nhìn
-    summaryItems.sort((a, b) => a.productName.localeCompare(b.productName));
-
-    let totalSummaryQty = 0;
-    summaryItems.forEach((item, index) => {
-        totalSummaryQty += item.quantity;
-        const row = summarySheet.addRow({
-            no: index + 1,
-            product: item.productName,
-            sku: item.sku,
-            unit: item.unit,
-            variant: item.variant,
-            totalQty: item.quantity
-        });
-
-        row.alignment = {vertical: 'middle', wrapText: true};
-        row.getCell('no').alignment = {horizontal: 'center', vertical: 'middle'};
-        row.getCell('totalQty').alignment = {horizontal: 'center', vertical: 'middle'};
-        row.getCell('totalQty').font = {bold: true, color: {argb: blue}}; // Tô xanh số lượng tổng để dễ nhìn
-
-        if (index % 2 === 1) {
-            row.eachCell({includeEmpty: true}, (cell) => {
-                cell.fill = {type: 'pattern', pattern: 'solid', fgColor: {argb: 'F8FAFC'}};
-            });
-        }
-        addBorder(row);
-    });
-
-    // Dòng tính tổng của Sheet Tổng hợp
-    const summaryTotalRow = summarySheet.addRow(['', 'TỔNG CỘNG TẤT CẢ SẢN PHẨM', '', '', '', totalSummaryQty]);
-    summaryTotalRow.font = {name: 'Times New Roman', bold: true};
-    summaryTotalRow.getCell(2).font = {name: 'Times New Roman', bold: true, color: {argb: navy}};
-    summaryTotalRow.getCell(6).font = {name: 'Times New Roman', bold: true, color: {argb: 'E11D48'}}; // Đỏ sậm cho tổng lớn
-    summaryTotalRow.getCell(6).alignment = {horizontal: 'center', vertical: 'middle'};
-    addBorder(summaryTotalRow);
-
-
-    // ==========================================
-    // SHEET 3: CHI TIẾT (RAW DATA)
-    // ==========================================
-    const detail = workbook.addWorksheet('CHI_TIET_DATA', {views: [{showGridLines: false}]});
-    detail.columns = [
-        {header: 'STT', key: 'no', width: 8}, {header: 'Ngày', key: 'date', width: 16},
-        {header: 'Nền tảng', key: 'platform', width: 18}, {header: 'Loại phiếu', key: 'type', width: 18},
-        {header: 'Mã đơn hàng', key: 'order', width: 24}, {header: 'Tên sản phẩm', key: 'product', width: 36},
-        {header: 'SKU', key: 'sku', width: 20}, {header: 'Dung tích / Khối lượng', key: 'unit', width: 24},
-        {header: 'Hương / Màu', key: 'variant', width: 20}, {header: 'Số lượng', key: 'qty', width: 12},
-    ];
-    input.items.forEach((item, index) => {
-        detail.addRow({
-            no: index + 1,
-            date: input.documentDate,
-            platform: platformLabel(input.platform),
-            type: input.type === 'outbound' ? 'Xuất hàng' : 'Hoàn hàng',
-            order: item.orderCode,
-            product: item.productName,
-            sku: item.sku,
-            unit: item.unit,
-            variant: item.variant || '-',
-            qty: item.quantity,
-        });
-    });
-
-    const detailHeader = detail.getRow(1);
-    detailHeader.eachCell({includeEmpty: true}, (cell) => {
-        cell.font = {name: 'Times New Roman', bold: true, color: {argb: 'FFFFFF'}};
-        cell.fill = {type: 'pattern', pattern: 'solid', fgColor: {argb: slate}}; // Đổi màu xám để phân biệt với sheet chính
-        cell.alignment = {vertical: 'middle', horizontal: 'center', wrapText: true};
-    });
-    detailHeader.height = 28;
-    detail.eachRow((row, index) => {
-        if (index > 1) {
-            row.eachCell((cell) => {
-                cell.font = {name: 'Times New Roman'};
-            });
-            addBorder(row);
-        }
-    });
-    detail.autoFilter = {from: 'A1', to: 'J1'};
-    detail.views = [{state: 'frozen', ySplit: 1, showGridLines: false}];
-
-
-    // ==========================================
-    // SHEET 4: THÔNG TIN (METADATA)
-    // ==========================================
-    const meta = workbook.addWorksheet('THONG_TIN', {views: [{showGridLines: false}]});
-    meta.columns = [{width: 28}, {width: 48}];
-    meta.addRows([
-        ['Thông tin', 'Giá trị'],
-        ['Hệ thống', 'OmniShip Hub'],
-        ['Nền tảng', platformLabel(input.platform)],
-        ['Loại phiếu', input.type === 'outbound' ? 'Xuất hàng' : 'Hoàn hàng'],
-        ['Ngày phiếu', input.documentDate],
-        ['Số mã đơn hàng', new Set(input.items.map((item) => item.orderCode.trim()).filter(Boolean)).size],
-        ['Số mã SKU khác nhau (Mã SP)', summaryItems.length], // Đã thêm dòng thống kê số loại mặt hàng
-        ['Số dòng sản phẩm (Trong phiếu)', input.items.length],
-        ['Tổng số lượng sản phẩm', input.items.reduce((sum, item) => sum + item.quantity, 0)],
-    ]);
-    const metaHeader = meta.getRow(1);
-    metaHeader.eachCell({includeEmpty: true}, (cell) => {
-        cell.font = {name: 'Times New Roman', bold: true, color: {argb: 'FFFFFF'}};
-        cell.fill = {type: 'pattern', pattern: 'solid', fgColor: {argb: blue}};
-        cell.alignment = {vertical: 'middle', horizontal: 'center', wrapText: true};
-    });
-    meta.eachRow((row) => addBorder(row));
-
-
-    // ==========================================
-    // FINALIZING & EXPORT
-    // ==========================================
-    workbook.eachSheet((worksheet) => {
-        worksheet.eachRow({includeEmpty: false}, (row) => {
-            row.eachCell({includeEmpty: false}, (cell) => {
-                cell.font = {...(cell.font ?? {}), name: 'Times New Roman'};
-            });
-        });
-    });
-
-    const buffer = await workbook.xlsx.writeBuffer();
-    const blob = new Blob([buffer], {type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-
-    const platformName = input.platform === 'tiktok' ? 'TiktokShop' : 'Shopee';
-    const typeName = input.type === 'outbound' ? 'PhieuXuat' : 'PhieuHoan';
-
-    let shortDate = input.documentDate;
-    if (shortDate.includes('/')) {
-        const [dayStr, monthStr] = shortDate.split('/');
-        const day = parseInt(dayStr, 10);
-        const month = parseInt(monthStr, 10);
-        if (!isNaN(day) && !isNaN(month)) {
-            shortDate = `${day}.${month}`;
-        }
-    } else {
-        shortDate = shortDate.replace(/[^a-zA-Z0-9]/g, '.');
-    }
-
-    anchor.download = `${typeName}_${platformName}_${shortDate}.xlsx`;
-    anchor.click();
-    URL.revokeObjectURL(url);
+  const detail = workbook.addWorksheet('CHI_TIET_DATA', { views: [{ showGridLines: false }] }); detail.columns = [{ header: 'STT', key: 'no', width: 8 }, { header: 'Ngày', key: 'date', width: 16 }, { header: 'Nền tảng', key: 'platform', width: 18 }, { header: 'Loại phiếu', key: 'type', width: 18 }, { header: 'Mã đơn hàng', key: 'order', width: 24 }, { header: 'Tên sản phẩm', key: 'product', width: 36 }, { header: 'SKU', key: 'sku', width: 20 }, { header: 'Dung tích / Khối lượng', key: 'unit', width: 24 }, { header: 'Hương / Màu', key: 'variant', width: 20 }, { header: 'Số lượng', key: 'qty', width: 12 }, { header: 'Tổng quyết toán đơn', key: 'orderSettlement', width: 20 }, { header: 'Quyết toán sản phẩm', key: 'productSettlement', width: 20 }, { header: 'Lời / Lỗ', key: 'profitLoss', width: 20 }];
+  input.items.forEach((item, index) => { const group = groupItems(input.items).find(([, rows]) => rows.includes(item)); const groupRows = group?.[1] ?? [item]; const result = calculateProductSettlements(groupRows, item.orderSettlementAmount)[groupRows.indexOf(item)]; const row = detail.addRow({ no: index + 1, date: input.documentDate, platform: platformLabel(input.platform), type: input.type === 'outbound' ? 'Xuất hàng' : 'Hoàn hàng', order: item.orderCode, product: item.productName, sku: item.sku, unit: item.unit, variant: item.variant || '-', qty: item.quantity, orderSettlement: item.orderSettlementAmount, productSettlement: result?.settlementAmount ?? null, profitLoss: result?.profitLoss ?? null }); row.getCell('orderSettlement').numFmt = '#,##0'; row.getCell('productSettlement').numFmt = '#,##0'; row.getCell('profitLoss').numFmt = '#,##0;[Red]-#,##0'; addBorder(row); });
+  styleHeader(detail.getRow(1), slate); detail.autoFilter = { from: 'A1', to: 'M1' }; detail.views = [{ state: 'frozen', ySplit: 1, showGridLines: false }];
+  const meta = workbook.addWorksheet('THONG_TIN', { views: [{ showGridLines: false }] }); meta.columns = [{ width: 34 }, { width: 48 }]; meta.addRows([['Thông tin', 'Giá trị'], ['Hệ thống', 'OmniShip Hub'], ['Nền tảng', platformLabel(input.platform)], ['Loại phiếu', input.type === 'outbound' ? 'Xuất hàng' : 'Hoàn hàng'], ['Ngày phiếu', input.documentDate], ['Số mã đơn hàng', new Set(input.items.map((item) => item.orderCode.trim()).filter(Boolean)).size], ['Số mã SKU khác nhau', summaryItems.length], ['Số dòng sản phẩm', input.items.length], ['Tổng số lượng sản phẩm', input.items.reduce((sum, item) => sum + item.quantity, 0)], ['Tổng quyết toán', totalSettlement], ['Tổng mức tối thiểu', totalMinimum], ['Tổng lời / lỗ', totalProfitLoss]]); styleHeader(meta.getRow(1), blue); meta.eachRow((row) => addBorder(row)); meta.getCell('B10').numFmt = '#,##0'; meta.getCell('B11').numFmt = '#,##0'; meta.getCell('B12').numFmt = '#,##0;[Red]-#,##0';
+  finalizeWorkbook(workbook); const platformName = input.platform === 'tiktok' ? 'TiktokShop' : 'Shopee'; const typeName = input.type === 'outbound' ? 'PhieuXuat' : 'PhieuHoan'; let shortDate = input.documentDate; if (shortDate.includes('/')) { const [dayStr, monthStr] = shortDate.split('/'); const day = parseInt(dayStr, 10); const month = parseInt(monthStr, 10); if (!Number.isNaN(day) && !Number.isNaN(month)) shortDate = `${day}.${month}`; } else shortDate = shortDate.replace(/[^a-zA-Z0-9]/g, '.'); await downloadWorkbook(workbook, `${typeName}_${platformName}_${shortDate}.xlsx`);
 }
 
-/**
- * Export multiple saved documents into one workbook. Every document date gets
- * a distinct merged section header, and each ticket remains a separate block.
- */
 export async function exportHistoryDocumentsExcel(inputs: DocumentInput[]) {
-    if (inputs.length === 0) throw new Error('Không có phiếu nào để xuất Excel.');
-
-    const workbook = new ExcelJS.Workbook();
-    workbook.creator = 'OmniShip Hub';
-    workbook.created = new Date();
-    workbook.subject = 'Xuất gộp lịch sử phiếu';
-    const sheet = workbook.addWorksheet('PHIEU_GOP', {views: [{showGridLines: false}]});
-    sheet.columns = [
-        {width: 7}, {width: 14}, {width: 18}, {width: 18},
-        {width: 24}, {width: 34}, {width: 22}, {width: 24},
-        {width: 20}, {width: 12},
-    ];
-    sheet.views = [{state: 'frozen', ySplit: 0, showGridLines: false}];
-
-    const sorted = [...inputs].sort((a, b) =>
-        bulkExportDateSortKey(a.documentDate) - bulkExportDateSortKey(b.documentDate)
-        || a.platform.localeCompare(b.platform)
-        || a.type.localeCompare(b.type),
-    );
-    const dayGroups = new Map<string, DocumentInput[]>();
-    for (const input of sorted) {
-        const dateKey = normalizeBulkExportDate(input.documentDate);
-        const group = dayGroups.get(dateKey) ?? [];
-        group.push(input);
-        dayGroups.set(dateKey, group);
+  if (!inputs.length) throw new Error('Không có phiếu nào để xuất Excel.');
+  const workbook = new ExcelJS.Workbook(); workbook.creator = 'OmniShip Hub'; workbook.created = new Date(); workbook.subject = 'Xuất gộp lịch sử phiếu';
+  const sheet = workbook.addWorksheet('PHIEU_GOP', { views: [{ showGridLines: false }] }); sheet.columns = [{ width: 7 }, { width: 14 }, { width: 18 }, { width: 18 }, { width: 24 }, { width: 34 }, { width: 22 }, { width: 24 }, { width: 20 }, { width: 12 }, { width: 20 }, { width: 20 }, { width: 20 }];
+  const sorted = [...inputs].sort((a, b) => bulkExportDateSortKey(a.documentDate) - bulkExportDateSortKey(b.documentDate) || a.platform.localeCompare(b.platform) || a.type.localeCompare(b.type)); const dayGroups = new Map<string, DocumentInput[]>(); for (const input of sorted) { const key = normalizeBulkExportDate(input.documentDate); const group = dayGroups.get(key) ?? []; group.push(input); dayGroups.set(key, group); }
+  let globalRow = 1; let totalItems = 0; let totalQuantity = 0; let totalSettlement = 0; let totalProfitLoss = 0; let ticketNumber = 0; const detailRows: Array<Record<string, string | number | null>> = [];
+  for (const [date, documents] of dayGroups) {
+    const dayHeader = sheet.getRow(globalRow); dayHeader.getCell(1).value = `NGÀY: ${formatBulkExportDate(date)} · ${documents.length} PHIẾU`; for (let c = 1; c <= 13; c += 1) { const cell = dayHeader.getCell(c); cell.font = { name: 'Times New Roman', size: 15, bold: true, color: { argb: 'FFFFFF' } }; cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: navy } }; } dayHeader.height = 28; globalRow += 1;
+    for (const input of documents) {
+      ticketNumber += 1; const ticketHeader = sheet.getRow(globalRow); ticketHeader.getCell(1).value = `PHIẾU ${ticketNumber} | ${input.type === 'outbound' ? 'XUẤT HÀNG' : 'HOÀN HÀNG'} | ${platformLabel(input.platform)} | ${input.items.length} dòng`; for (let c = 1; c <= 13; c += 1) { const cell = ticketHeader.getCell(c); cell.font = { name: 'Times New Roman', bold: true, color: { argb: navy } }; cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: lightBlue } }; } globalRow += 1;
+      const headers = ['STT', 'Ngày', 'Nền tảng', 'Loại phiếu', 'Mã đơn hàng', 'Tên sản phẩm', 'SKU', 'Dung tích / Khối lượng', 'Hương / Màu', 'Số lượng', 'Tổng quyết toán đơn', 'Quyết toán sản phẩm', 'Lời / Lỗ']; const header = sheet.getRow(globalRow); header.values = headers; styleHeader(header); header.height = 32; globalRow += 1;
+      const items = [...input.items].sort((a, b) => (a.orderCode || '').localeCompare(b.orderCode || ''));
+      for (const [orderCode, orderItems] of groupItems(items)) { const results = calculateProductSettlements(orderItems, orderItems[0]?.orderSettlementAmount ?? null); orderItems.forEach((item, index) => { const result = results[index]; const row = sheet.getRow(globalRow); row.values = [index + 1, formatBulkExportDate(date), platformLabel(input.platform), input.type === 'outbound' ? 'Xuất hàng' : 'Hoàn hàng', orderCode, item.productName, item.sku, item.unit, item.variant || '-', item.quantity, item.orderSettlementAmount, result.settlementAmount, result.profitLoss]; row.eachCell({ includeEmpty: true }, (cell) => { cell.font = { name: 'Times New Roman' }; cell.alignment = { vertical: 'middle', wrapText: true }; }); row.getCell(10).alignment = { horizontal: 'center' }; row.getCell(11).numFmt = '#,##0'; row.getCell(12).numFmt = '#,##0'; row.getCell(13).numFmt = '#,##0;[Red]-#,##0'; addBorder(row); detailRows.push({ Ngày: formatBulkExportDate(date), 'Nền tảng': platformLabel(input.platform), 'Loại phiếu': input.type === 'outbound' ? 'Xuất hàng' : 'Hoàn hàng', 'Mã đơn hàng': orderCode, 'Tên sản phẩm': item.productName, SKU: item.sku, 'Dung tích / Khối lượng': item.unit, 'Hương / Màu': item.variant || '-', 'Số lượng': item.quantity, 'Tổng quyết toán đơn': item.orderSettlementAmount, 'Quyết toán sản phẩm': result.settlementAmount, 'Lời / Lỗ': result.profitLoss }); totalItems += 1; totalQuantity += Number(item.quantity) || 0; totalSettlement += result.settlementAmount ?? 0; totalProfitLoss += result.profitLoss ?? 0; globalRow += 1; }); }
+      globalRow += 1;
     }
-
-    let globalRow = 1;
-    let totalItems = 0;
-    let totalQuantity = 0;
-    let ticketNumber = 0;
-    const detailRows: Array<Record<string, string | number>> = [];
-
-    for (const [date, documents] of dayGroups) {
-        const dayHeader = sheet.getRow(globalRow);
-        dayHeader.getCell(1).value = `NGÀY: ${formatBulkExportDate(date)}  ·  ${documents.length} PHIẾU`;
-        for (let column = 1; column <= 10; column += 1) {
-            const cell = dayHeader.getCell(column);
-            cell.font = {name: 'Times New Roman', size: 15, bold: true, color: {argb: 'FFFFFF'}};
-            cell.fill = {type: 'pattern', pattern: 'solid', fgColor: {argb: navy}};
-            cell.alignment = {vertical: 'middle', horizontal: 'left'};
-        }
-        sheet.getRow(globalRow).height = 28;
-        globalRow += 1;
-
-        for (const input of documents) {
-            ticketNumber += 1;
-            const ticketHeader = sheet.getRow(globalRow);
-            ticketHeader.getCell(1).value = `PHIẾU ${ticketNumber}  |  ${input.type === 'outbound' ? 'XUẤT HÀNG' : 'HOÀN HÀNG'}  |  ${platformLabel(input.platform)}  |  ${input.items.length} dòng sản phẩm`;
-            for (let column = 1; column <= 10; column += 1) {
-                const cell = ticketHeader.getCell(column);
-                cell.font = {name: 'Times New Roman', bold: true, color: {argb: navy}};
-                cell.fill = {type: 'pattern', pattern: 'solid', fgColor: {argb: lightBlue}};
-                cell.alignment = {vertical: 'middle'};
-            }
-            sheet.getRow(globalRow).height = 23;
-            globalRow += 1;
-
-            const headers = ['STT', 'Ngày', 'Nền tảng', 'Loại phiếu', 'Mã đơn hàng', 'Tên sản phẩm', 'SKU', 'Dung tích / Khối lượng', 'Hương / Màu', 'Số lượng'];
-            const header = sheet.getRow(globalRow);
-            header.values = headers;
-            header.eachCell({includeEmpty: true}, (cell) => {
-                cell.font = {name: 'Times New Roman', bold: true, color: {argb: 'FFFFFF'}};
-                cell.fill = {type: 'pattern', pattern: 'solid', fgColor: {argb: blue}};
-                cell.alignment = {vertical: 'middle', horizontal: 'center', wrapText: true};
-                cell.border = {
-                    top: {style: 'thin', color: {argb: border}},
-                    left: {style: 'thin', color: {argb: border}},
-                    bottom: {style: 'thin', color: {argb: border}},
-                    right: {style: 'thin', color: {argb: border}},
-                };
-            });
-            header.height = 30;
-            globalRow += 1;
-
-            const items = [...input.items].sort((a, b) => (a.orderCode || '').localeCompare(b.orderCode || ''));
-            items.forEach((item, index) => {
-                const values = [
-                    index + 1, formatBulkExportDate(date), platformLabel(input.platform),
-                    input.type === 'outbound' ? 'Xuất hàng' : 'Hoàn hàng',
-                    item.orderCode, item.productName, item.sku, item.unit, item.variant || '-', item.quantity,
-                ];
-                const row = sheet.getRow(globalRow);
-                row.values = values;
-                row.eachCell({includeEmpty: true}, (cell) => {
-                    cell.font = {name: 'Times New Roman'};
-                    cell.alignment = {vertical: 'middle', wrapText: true};
-                    cell.border = {
-                        top: {style: 'thin', color: {argb: border}},
-                        left: {style: 'thin', color: {argb: border}},
-                        bottom: {style: 'thin', color: {argb: border}},
-                        right: {style: 'thin', color: {argb: border}},
-                    };
-                    if (index % 2 === 1) cell.fill = {type: 'pattern', pattern: 'solid', fgColor: {argb: 'F8FAFC'}};
-                });
-                row.getCell(1).alignment = {horizontal: 'center', vertical: 'middle'};
-                row.getCell(2).alignment = {horizontal: 'center', vertical: 'middle'};
-                row.getCell(10).alignment = {horizontal: 'center', vertical: 'middle'};
-                detailRows.push({
-                    Ngày: formatBulkExportDate(date),
-                    'Nền tảng': platformLabel(input.platform),
-                    'Loại phiếu': input.type === 'outbound' ? 'Xuất hàng' : 'Hoàn hàng',
-                    'Mã đơn hàng': item.orderCode,
-                    'Tên sản phẩm': item.productName,
-                    SKU: item.sku,
-                    'Dung tích / Khối lượng': item.unit,
-                    'Hương / Màu': item.variant || '-',
-                    'Số lượng': item.quantity,
-                });
-                totalItems += 1;
-                totalQuantity += Number(item.quantity) || 0;
-                globalRow += 1;
-            });
-
-            // Keep order-code cells unmerged in bulk exports to maximize XLSX compatibility.
-            globalRow += 1; // visual gap between ticket blocks
-        }
-        globalRow += 1; // visual gap between day clusters
-    }
-
-    const detail = workbook.addWorksheet('CHI_TIET_DATA', {views: [{state: 'frozen', ySplit: 1, showGridLines: false}]});
-    detail.columns = [
-        {header: 'STT', key: 'no', width: 8}, {header: 'Ngày', key: 'date', width: 16},
-        {header: 'Nền tảng', key: 'platform', width: 18}, {header: 'Loại phiếu', key: 'type', width: 18},
-        {header: 'Mã đơn hàng', key: 'order', width: 24}, {header: 'Tên sản phẩm', key: 'product', width: 36},
-        {header: 'SKU', key: 'sku', width: 20}, {header: 'Dung tích / Khối lượng', key: 'unit', width: 24},
-        {header: 'Hương / Màu', key: 'variant', width: 20}, {header: 'Số lượng', key: 'qty', width: 12},
-    ];
-    detailRows.forEach((item, index) => detail.addRow({
-        no: index + 1, date: item['Ngày'], platform: item['Nền tảng'], type: item['Loại phiếu'],
-        order: item['Mã đơn hàng'], product: item['Tên sản phẩm'], sku: item.SKU,
-        unit: item['Dung tích / Khối lượng'], variant: item['Hương / Màu'], qty: item['Số lượng'],
-    }));
-    detail.getRow(1).eachCell({includeEmpty: true}, (cell) => {
-        cell.font = {name: 'Times New Roman', bold: true, color: {argb: 'FFFFFF'}};
-        cell.fill = {type: 'pattern', pattern: 'solid', fgColor: {argb: slate}};
-        cell.alignment = {vertical: 'middle', horizontal: 'center', wrapText: true};
-        cell.border = {
-            top: {style: 'thin', color: {argb: border}}, left: {style: 'thin', color: {argb: border}},
-            bottom: {style: 'thin', color: {argb: border}}, right: {style: 'thin', color: {argb: border}},
-        };
-    });
-    detail.getRow(1).height = 28;
-    detail.eachRow((row, index) => {
-        if (index > 1) {
-            row.eachCell({includeEmpty: true}, (cell) => {
-                cell.font = {name: 'Times New Roman'};
-                cell.border = {
-                    top: {style: 'thin', color: {argb: border}}, left: {style: 'thin', color: {argb: border}},
-                    bottom: {style: 'thin', color: {argb: border}}, right: {style: 'thin', color: {argb: border}},
-                };
-            });
-        }
-    });
-    detail.autoFilter = {from: 'A1', to: 'J1'};
-
-    const meta = workbook.addWorksheet('THONG_TIN', {views: [{showGridLines: false}]});
-    meta.columns = [{width: 32}, {width: 30}];
-    meta.addRows([
-        ['Thông tin', 'Giá trị'],
-        ['Hệ thống', 'OmniShip Hub'],
-        ['Nền tảng', [...new Set(inputs.map((item) => platformLabel(item.platform)))].join(', ')],
-        ['Ngày có phiếu', dayGroups.size],
-        ['Tổng số phiếu', inputs.length],
-        ['Tổng dòng sản phẩm', totalItems],
-        ['Tổng số lượng sản phẩm', totalQuantity],
-        ['Ngày xuất file', getTodayISO()],
-    ]);
-    meta.getRow(1).eachCell({includeEmpty: true}, (cell) => {
-        cell.font = {name: 'Times New Roman', bold: true, color: {argb: 'FFFFFF'}};
-        cell.fill = {type: 'pattern', pattern: 'solid', fgColor: {argb: blue}};
-        cell.alignment = {vertical: 'middle', horizontal: 'center'};
-    });
-    meta.eachRow((row) => addBorder(row));
-
-    const buffer = await workbook.xlsx.writeBuffer();
-    const blob = new Blob([buffer], {type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = `LichSuPhieu_Gop_${inputs.length}_phieu_${getTodayISO()}.xlsx`;
-    anchor.click();
-    URL.revokeObjectURL(url);
+    globalRow += 1;
+  }
+  const detail = workbook.addWorksheet('CHI_TIET_DATA', { views: [{ state: 'frozen', ySplit: 1, showGridLines: false }] }); detail.columns = [{ header: 'STT', key: 'no', width: 8 }, { header: 'Ngày', key: 'date', width: 16 }, { header: 'Nền tảng', key: 'platform', width: 18 }, { header: 'Loại phiếu', key: 'type', width: 18 }, { header: 'Mã đơn hàng', key: 'order', width: 24 }, { header: 'Tên sản phẩm', key: 'product', width: 36 }, { header: 'SKU', key: 'sku', width: 20 }, { header: 'Dung tích / Khối lượng', key: 'unit', width: 24 }, { header: 'Hương / Màu', key: 'variant', width: 20 }, { header: 'Số lượng', key: 'qty', width: 12 }, { header: 'Tổng quyết toán đơn', key: 'orderSettlement', width: 20 }, { header: 'Quyết toán sản phẩm', key: 'productSettlement', width: 20 }, { header: 'Lời / Lỗ', key: 'profitLoss', width: 20 }]; detailRows.forEach((item, index) => { const row = detail.addRow({ no: index + 1, date: item['Ngày'], platform: item['Nền tảng'], type: item['Loại phiếu'], order: item['Mã đơn hàng'], product: item['Tên sản phẩm'], sku: item.SKU, unit: item['Dung tích / Khối lượng'], variant: item['Hương / Màu'], qty: item['Số lượng'], orderSettlement: item['Tổng quyết toán đơn'], productSettlement: item['Quyết toán sản phẩm'], profitLoss: item['Lời / Lỗ'] }); row.getCell('orderSettlement').numFmt = '#,##0'; row.getCell('productSettlement').numFmt = '#,##0'; row.getCell('profitLoss').numFmt = '#,##0;[Red]-#,##0'; addBorder(row); }); styleHeader(detail.getRow(1), slate); detail.autoFilter = { from: 'A1', to: 'M1' };
+  const meta = workbook.addWorksheet('THONG_TIN', { views: [{ showGridLines: false }] }); meta.columns = [{ width: 34 }, { width: 30 }]; meta.addRows([['Thông tin', 'Giá trị'], ['Hệ thống', 'OmniShip Hub'], ['Nền tảng', [...new Set(inputs.map((item) => platformLabel(item.platform)))].join(', ')], ['Ngày có phiếu', dayGroups.size], ['Tổng số phiếu', inputs.length], ['Tổng dòng sản phẩm', totalItems], ['Tổng số lượng sản phẩm', totalQuantity], ['Tổng quyết toán phân bổ', totalSettlement], ['Tổng lời / lỗ', totalProfitLoss], ['Ngày xuất file', getTodayISO()]]); styleHeader(meta.getRow(1), blue); meta.eachRow((row) => addBorder(row)); meta.getCell('B8').numFmt = '#,##0'; meta.getCell('B9').numFmt = '#,##0;[Red]-#,##0'; finalizeWorkbook(workbook); await downloadWorkbook(workbook, `LichSuPhieu_Gop_${inputs.length}_phieu_${getTodayISO()}.xlsx`);
 }
