@@ -37,9 +37,6 @@ const emptyItem = (): DocumentItemInput => ({
   variant: '',
   unit: '',
   quantity: 1,
-  orderSettlementAmount: null,
-  salePrice: null,
-  minimumSettlement: null,
 });
 
 interface Props {
