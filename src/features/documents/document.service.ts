@@ -14,7 +14,6 @@ export interface SavedDocument extends DocumentInput {
   updatedAt: string;
 }
 
-// Định nghĩa interface nội bộ để đảm bảo Type Safety khi hứng dữ liệu từ Supabase (bypass lỗi 'never')
 interface DocumentRow {
   id: string;
   platform: string;
@@ -31,9 +30,6 @@ interface DocumentItemRow {
   unit: string;
   variant: string | null;
   quantity: number;
-  order_settlement_amount: number | null;
-  sale_price: number | null;
-  minimum_settlement: number | null;
 }
 
 function toSupabaseError(error: unknown): SupabaseOperationError {
@@ -100,14 +96,10 @@ function buildItems(input: DocumentInput) {
     unit: item.unit.trim(),
     variant: item.variant.trim(),
     quantity: item.quantity,
-    order_settlement_amount: item.orderSettlementAmount,
-    sale_price: item.salePrice,
-    minimum_settlement: item.minimumSettlement,
   }));
 }
 
 export async function createDocument(input: DocumentInput) {
-  // Ép kiểu supabase sang any ở bước gọi để vượt qua strict check của TypeScript khi thiếu type RPC
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data, error } = await (supabase as any).rpc('create_warehouse_document', {
     p_document: buildPayload(input),
@@ -150,12 +142,11 @@ export async function fetchDocument(documentId: string): Promise<SavedDocument> 
 
   if (documentError) throw toSupabaseError(documentError);
 
-  // Ép dữ liệu trả về theo Interface cục bộ để giữ Type Safety
   const document = data as DocumentRow;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const { data: rawItems, error: itemError } = await (supabase as any)
       .from('warehouse_document_items')
-      .select('order_code, product_name, sku, unit, variant, quantity, order_settlement_amount, sale_price, minimum_settlement')
+      .select('order_code, product_name, sku, unit, variant, quantity')
       .eq('document_id', documentId)
       .order('created_at', { ascending: true });
 
@@ -174,9 +165,6 @@ export async function fetchDocument(documentId: string): Promise<SavedDocument> 
       unit: item.unit,
       variant: item.variant ?? '',
       quantity: item.quantity,
-      orderSettlementAmount: item.order_settlement_amount,
-      salePrice: item.sale_price,
-      minimumSettlement: item.minimum_settlement,
     } as DocumentItemInput)),
     createdAt: document.created_at,
     updatedAt: document.updated_at,
