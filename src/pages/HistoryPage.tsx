@@ -1,23 +1,5 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  AlertTriangle,
-  CalendarDays,
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
-  CheckCircle2,
-  ClipboardList,
-  Download,
-  Edit3,
-  Trash2,
-  X,
-  Filter,
-  Layers3,
-  PackageCheck,
-  RefreshCw,
-  RotateCcw,
-  SearchX,
-} from 'lucide-react';
+import { AlertTriangle, CalendarDays, ChevronDown, ChevronLeft, ChevronRight, CheckCircle2, Download, Edit3, Filter, Layers3, PackageCheck, RefreshCw, RotateCcw, SearchX, Trash2, X } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Button } from '../components/Button';
 import { PageHeader } from '../components/PageHeader';
@@ -27,6 +9,7 @@ import { useFeatureFlags } from '../features/featureFlags/useFeatureFlags';
 import { deleteHistoryDocument, fetchHistory } from '../features/history/history.service';
 import { formatDateVN } from '../lib/date';
 import { exportDocumentExcel, exportHistoryDocumentsExcel } from '../lib/excel';
+import { calculateProductSettlements, formatVND } from '../lib/settlement';
 import type { DocumentHistoryItem, DocumentInput, DocumentType, Platform } from '../types/document';
 
 const PAGE_SIZE = 100;
@@ -34,11 +17,13 @@ type HistoryDocument = Awaited<ReturnType<typeof fetchDocument>>;
 
 function oneYearApart(from: string, to: string) {
   if (!from || !to) return true;
-  const start = new Date(`${from}T00:00:00`);
-  const end = new Date(`${to}T00:00:00`);
-  const max = new Date(start);
-  max.setFullYear(max.getFullYear() + 1);
-  return end <= max;
+  const start = new Date(`${from}T00:00:00`); const end = new Date(`${to}T00:00:00`);
+  const max = new Date(start); max.setFullYear(max.getFullYear() + 1); return end <= max;
+}
+function groupDocumentItems(document: HistoryDocument) {
+  const groups = new Map<string, { orderCode: string; items: HistoryDocument['items'] }>();
+  document.items.forEach((item, index) => { const key = item.orderCode.trim() || `__missing_${index}`; const group = groups.get(key); if (group) group.items.push(item); else groups.set(key, { orderCode: item.orderCode.trim(), items: [item] }); });
+  return Array.from(groups.values());
 }
 
 export function HistoryPage() {
@@ -47,791 +32,114 @@ export function HistoryPage() {
   const { features, loading: featureLoading } = useFeatureFlags();
   const platform: Platform = rawPlatform === 'shopee' ? 'shopee' : 'tiktok';
   const isShopee = platform === 'shopee';
-
   const [type, setType] = useState<'all' | DocumentType>('all');
-  const [fromInput, setFromInput] = useState('');
-  const [toInput, setToInput] = useState('');
-  const [from, setFrom] = useState('');
-  const [to, setTo] = useState('');
-  const [rows, setRows] = useState<DocumentHistoryItem[]>([]);
-  const [total, setTotal] = useState(0);
-  const [page, setPage] = useState(0);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
-  const [filterError, setFilterError] = useState('');
-  const [exportingId, setExportingId] = useState<string | null>(null);
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
-  const [bulkExporting, setBulkExporting] = useState(false);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [pendingDelete, setPendingDelete] = useState<DocumentHistoryItem | null>(null);
-  const [successMessage, setSuccessMessage] = useState('');
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [detailById, setDetailById] = useState<Record<string, Awaited<ReturnType<typeof fetchDocument>>>>({});
-  const [detailLoadingId, setDetailLoadingId] = useState<string | null>(null);
+  const [fromInput, setFromInput] = useState(''); const [toInput, setToInput] = useState('');
+  const [from, setFrom] = useState(''); const [to, setTo] = useState('');
+  const [rows, setRows] = useState<DocumentHistoryItem[]>([]); const [total, setTotal] = useState(0); const [page, setPage] = useState(0);
+  const [loading, setLoading] = useState(true); const [error, setError] = useState(''); const [filterError, setFilterError] = useState('');
+  const [selectedIds, setSelectedIds] = useState<string[]>([]); const [bulkExporting, setBulkExporting] = useState(false); const [exportingId, setExportingId] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null); const [detailById, setDetailById] = useState<Record<string, HistoryDocument>>({}); const [detailLoadingId, setDetailLoadingId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null); const [pendingDelete, setPendingDelete] = useState<DocumentHistoryItem | null>(null); const [successMessage, setSuccessMessage] = useState('');
 
-  const allowedTypes = useMemo<DocumentType[]>(() => {
-    const result: DocumentType[] = [];
-    if (features.outbound) result.push('outbound');
-    if (features.returns) result.push('return');
-    return result;
-  }, [features.outbound, features.returns]);
-
+  const allowedTypes = useMemo<DocumentType[]>(() => [
+    ...(features.outbound ? ['outbound' as const] : []),
+    ...(features.returns ? ['return' as const] : []),
+  ], [features.outbound, features.returns]);
   const typeOptions = useMemo(() => [
     { value: 'all', label: 'Tất cả loại' },
     ...(features.outbound ? [{ value: 'outbound', label: 'Phiếu xuất hàng' }] : []),
     ...(features.returns ? [{ value: 'return', label: 'Phiếu hoàn hàng' }] : []),
   ], [features.outbound, features.returns]);
-
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const rangeLabel = useMemo(
-    () => `${total === 0 ? 0 : page * PAGE_SIZE + 1}-${Math.min((page + 1) * PAGE_SIZE, total)} / ${total}`,
-    [page, total],
-  );
-
-  const pageStats = useMemo(() => ({
-    orders: rows.reduce((sum, row) => sum + row.orderCount, 0),
-    quantity: rows.reduce((sum, row) => sum + row.totalQuantity, 0),
-    outbound: rows.filter((row) => row.type === 'outbound').length,
-    returns: rows.filter((row) => row.type === 'return').length,
-  }), [rows]);
-
-  const hasActiveFilters = type !== 'all' || Boolean(from || to);
-
-  useEffect(() => {
-    if ((type === 'outbound' && !features.outbound) || (type === 'return' && !features.returns)) {
-      setType('all');
-      setPage(0);
-    }
-  }, [type, features.outbound, features.returns]);
+  const pageStats = useMemo(() => ({ orders: rows.reduce((sum, row) => sum + row.orderCount, 0), quantity: rows.reduce((sum, row) => sum + row.totalQuantity, 0), settlement: rows.reduce((sum, row) => sum + row.totalSettlement, 0), profitLoss: rows.every((row) => row.totalProfitLoss != null) ? rows.reduce((sum, row) => sum + (row.totalProfitLoss ?? 0), 0) : null }), [rows]);
 
   const load = useCallback(async () => {
     if (featureLoading) return;
-    setLoading(true);
-    setError('');
-    try {
-      const result = await fetchHistory({
-        type,
-        from,
-        to,
-        page,
-        pageSize: PAGE_SIZE,
-        platform,
-        allowedTypes,
-      });
-      setRows(result.rows);
-      setTotal(result.count);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Không thể tải lịch sử phiếu.');
-    } finally {
-      setLoading(false);
-    }
+    setLoading(true); setError('');
+    try { const result = await fetchHistory({ type, from, to, page, pageSize: PAGE_SIZE, platform, allowedTypes }); setRows(result.rows); setTotal(result.count); }
+    catch (err) { setError(err instanceof Error ? err.message : 'Không thể tải lịch sử phiếu.'); }
+    finally { setLoading(false); }
   }, [type, from, to, page, platform, allowedTypes, featureLoading]);
-
   useEffect(() => { void load(); }, [load]);
 
   function applyFilters() {
-    const nextFrom = fromInput;
-    const nextTo = toInput;
     setFilterError('');
-
-    if ((nextFrom && !nextTo) || (!nextFrom && nextTo)) {
-      setFilterError('Vui lòng chọn cả Từ ngày và Đến ngày khi lọc theo khoảng thời gian.');
-      return;
-    }
-    if (nextFrom && nextTo && nextFrom > nextTo) {
-      setFilterError('Khoảng thời gian không hợp lệ: Từ ngày phải nhỏ hơn hoặc bằng Đến ngày.');
-      return;
-    }
-    if (nextFrom && nextTo && !oneYearApart(nextFrom, nextTo)) {
-      setFilterError('Khoảng thời gian lọc tối đa là 1 năm.');
-      return;
-    }
-
-    setFrom(nextFrom);
-    setTo(nextTo);
-    setPage(0);
+    if ((fromInput && !toInput) || (!fromInput && toInput)) return setFilterError('Vui lòng chọn cả Từ ngày và Đến ngày khi lọc theo khoảng thời gian.');
+    if (fromInput && toInput && fromInput > toInput) return setFilterError('Từ ngày phải nhỏ hơn hoặc bằng Đến ngày.');
+    if (fromInput && toInput && !oneYearApart(fromInput, toInput)) return setFilterError('Khoảng thời gian lọc tối đa là 1 năm.');
+    setFrom(fromInput); setTo(toInput); setPage(0);
   }
-
-  function clearFilters() {
-    setType('all');
-    setFromInput('');
-    setToInput('');
-    setFrom('');
-    setTo('');
-    setPage(0);
-    setFilterError('');
-  }
-
+  function clearFilters() { setType('all'); setFromInput(''); setToInput(''); setFrom(''); setTo(''); setPage(0); setFilterError(''); }
   async function toggleQuickView(id: string) {
-    if (expandedId === id) {
-      setExpandedId(null);
-      return;
-    }
-
-    setExpandedId(id);
-    if (detailById[id]) return;
-
-    setDetailLoadingId(id);
-    setError('');
-    try {
-      const document = await fetchDocument(id);
-      setDetailById((current) => ({ ...current, [id]: document }));
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Không thể tải nhanh chi tiết phiếu.');
-      setExpandedId(null);
-    } finally {
-      setDetailLoadingId(null);
-    }
+    if (expandedId === id) return setExpandedId(null);
+    setExpandedId(id); if (detailById[id]) return; setDetailLoadingId(id); setError('');
+    try { const document = await fetchDocument(id); setDetailById((current) => ({ ...current, [id]: document })); }
+    catch (err) { setError(err instanceof Error ? err.message : 'Không thể tải chi tiết phiếu.'); setExpandedId(null); }
+    finally { setDetailLoadingId(null); }
   }
-
-  async function exportSavedDocument(id: string) {
-    setExportingId(id);
-    setError('');
-    try {
-      const document = await fetchDocument(id);
-      await exportDocumentExcel(document);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Không thể xuất lại file Excel của phiếu.');
-    } finally {
-      setExportingId(null);
-    }
-  }
-
-  function toggleSelected(id: string) {
-    setSelectedIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
-  }
-
-  function toggleCurrentPageSelection(checked: boolean) {
-    setSelectedIds((current) => {
-      const pageIds = rows.map((row) => row.id);
-      return checked
-        ? [...new Set([...current, ...pageIds])]
-        : current.filter((id) => !pageIds.includes(id));
-    });
-  }
-
+  async function exportSavedDocument(id: string) { setExportingId(id); setError(''); try { await exportDocumentExcel(await fetchDocument(id)); } catch (err) { setError(err instanceof Error ? err.message : 'Không thể xuất lại file Excel.'); } finally { setExportingId(null); } }
+  function toggleSelected(id: string) { setSelectedIds((current) => current.includes(id) ? current.filter((value) => value !== id) : [...current, id]); }
+  function toggleCurrentPageSelection(checked: boolean) { const ids = rows.map((row) => row.id); setSelectedIds((current) => checked ? [...new Set([...current, ...ids])] : current.filter((id) => !ids.includes(id))); }
   async function exportDocuments(ids: string[]) {
-    if (ids.length === 0) {
-      setError('Vui lòng chọn ít nhất một phiếu để xuất Excel.');
-      return;
-    }
-    setBulkExporting(true);
-    setError('');
-    try {
-      const documents: DocumentInput[] = [];
-      for (let i = 0; i < ids.length; i += 10) {
-        const batch = await Promise.all(ids.slice(i, i + 10).map((id) => fetchDocument(id)));
-        documents.push(...batch);
-      }
-      await exportHistoryDocumentsExcel(documents);
-      setSuccessMessage(`Đã xuất gộp ${documents.length} phiếu vào một file Excel.`);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Không thể xuất các phiếu đã chọn.');
-    } finally {
-      setBulkExporting(false);
-    }
+    if (!ids.length) return setError('Vui lòng chọn ít nhất một phiếu để xuất Excel.');
+    setBulkExporting(true); setError('');
+    try { const documents: DocumentInput[] = []; for (let i = 0; i < ids.length; i += 10) documents.push(...await Promise.all(ids.slice(i, i + 10).map((id) => fetchDocument(id)))); await exportHistoryDocumentsExcel(documents); setSuccessMessage(`Đã xuất gộp ${documents.length} phiếu vào một file Excel.`); }
+    catch (err) { setError(err instanceof Error ? err.message : 'Không thể xuất các phiếu đã chọn.'); }
+    finally { setBulkExporting(false); }
   }
-
   async function exportAllMatchingDocuments() {
-    setBulkExporting(true);
-    setError('');
+    setBulkExporting(true); setError('');
     try {
-      const ids: string[] = [];
-      let currentPage = 0;
-      let count = 0;
-      do {
-        const result = await fetchHistory({
-          type, from, to, page: currentPage, pageSize: 500, platform, allowedTypes,
-        });
-        ids.push(...result.rows.map((row) => row.id));
-        count = result.count;
-        currentPage += 1;
-      } while (ids.length < count);
-      if (ids.length === 0) {
-        setError('Không có phiếu nào phù hợp với bộ lọc hiện tại để xuất.');
-        return;
-      }
-      const documents: DocumentInput[] = [];
-      for (let i = 0; i < ids.length; i += 10) {
-        const batch = await Promise.all(ids.slice(i, i + 10).map((id) => fetchDocument(id)));
-        documents.push(...batch);
-      }
-      await exportHistoryDocumentsExcel(documents);
-      setSuccessMessage(`Đã xuất gộp toàn bộ ${documents.length} phiếu phù hợp với bộ lọc vào một file Excel.`);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Không thể xuất toàn bộ lịch sử.');
-    } finally {
-      setBulkExporting(false);
-    }
+      const ids: string[] = []; let currentPage = 0; let count = 0;
+      do { const result = await fetchHistory({ type, from, to, page: currentPage, pageSize: 500, platform, allowedTypes }); ids.push(...result.rows.map((row) => row.id)); count = result.count; currentPage += 1; } while (ids.length < count);
+      await exportDocuments(ids);
+    } catch (err) { setError(err instanceof Error ? err.message : 'Không thể xuất toàn bộ lịch sử.'); }
+    finally { setBulkExporting(false); }
+  }
+  async function confirmDelete() {
+    if (!pendingDelete) return; const id = pendingDelete.id; setDeletingId(id); setError('');
+    try { await deleteHistoryDocument(id); setRows((current) => current.filter((row) => row.id !== id)); setTotal((current) => Math.max(0, current - 1)); setDetailById((current) => { const next = { ...current }; delete next[id]; return next; }); setExpandedId((current) => current === id ? null : current); setPendingDelete(null); setSuccessMessage('Đã xóa phiếu và dữ liệu sản phẩm liên quan.'); }
+    catch (err) { setError(err instanceof Error ? err.message : 'Không thể xóa phiếu.'); }
+    finally { setDeletingId(null); }
   }
 
-  async function confirmDeleteHistoryDocument() {
-    if (!pendingDelete) return;
-    const row = pendingDelete;
-    setDeletingId(row.id);
-    setError('');
-    setSuccessMessage('');
-    try {
-      await deleteHistoryDocument(row.id);
-      setRows((current) => current.filter((item) => item.id !== row.id));
-      setTotal((current) => Math.max(0, current - 1));
-      setDetailById((current) => {
-        const next = { ...current };
-        delete next[row.id];
-        return next;
-      });
-      if (expandedId === row.id) setExpandedId(null);
-      setPendingDelete(null);
-      setSuccessMessage('Đã xóa phiếu và toàn bộ dữ liệu sản phẩm liên quan.');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Không thể xóa phiếu. Vui lòng thử lại.');
-    } finally {
-      setDeletingId(null);
-    }
-  }
+  return <div className="space-y-5">
+    <PageHeader eyebrow="History Center" title={`Lịch sử ${isShopee ? 'Shopee' : 'TikTok Shop'}`} description="Tra cứu, lọc, chỉnh sửa, xem quyết toán/lời-lỗ và xuất lại các phiếu đã lưu." action={<Button variant="secondary" onClick={() => void load()} disabled={loading || featureLoading}><RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />Làm mới</Button>} />
 
-  const createAction = features.outbound
-    ? { label: 'Tạo phiếu xuất mới', path: `/warehouse/outbound/create?platform=${platform}`, icon: PackageCheck }
-    : features.returns
-      ? { label: 'Tạo phiếu hoàn mới', path: `/warehouse/returns/create?platform=${platform}`, icon: RotateCcw }
-      : null;
+    <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="rounded-[22px] border border-violet-100 bg-white/80 p-4 shadow-sm"><div className="text-xs font-bold uppercase tracking-[0.12em] text-slate-400">Tổng phiếu</div><div className="mt-1 text-2xl font-black">{total}</div></div>
+      <div className="rounded-[22px] border border-blue-100 bg-white/80 p-4 shadow-sm"><div className="text-xs font-bold uppercase tracking-[0.12em] text-slate-400">Số đơn trên trang</div><div className="mt-1 text-2xl font-black">{pageStats.orders}</div></div>
+      <div className="rounded-[22px] border border-emerald-100 bg-white/80 p-4 shadow-sm"><div className="text-xs font-bold uppercase tracking-[0.12em] text-slate-400">Tổng SL trên trang</div><div className="mt-1 text-2xl font-black">{pageStats.quantity}</div></div>
+      <div className="rounded-[22px] border border-cyan-100 bg-white/80 p-4 shadow-sm"><div className="text-xs font-bold uppercase tracking-[0.12em] text-slate-400">Tổng quyết toán</div><div className="mt-1 text-lg font-black text-emerald-700">{formatVND(pageStats.settlement)}</div></div>
+      <div className="rounded-[22px] border border-orange-100 bg-white/80 p-4 shadow-sm"><div className="text-xs font-bold uppercase tracking-[0.12em] text-slate-400">Tổng lời / lỗ</div><div className={`mt-1 text-lg font-black ${pageStats.profitLoss == null ? 'text-slate-500' : pageStats.profitLoss >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>{pageStats.profitLoss == null ? '—' : `${pageStats.profitLoss >= 0 ? '+' : ''}${formatVND(pageStats.profitLoss)}`}</div></div>
+    </section>
 
-  return (
-    <div className="space-y-5">
-      <PageHeader
-        eyebrow="History Center"
-        title={`Lịch sử ${isShopee ? 'Shopee' : 'TikTok Shop'}`}
-        description="Tra cứu, lọc, chỉnh sửa và xuất lại các phiếu đã lưu trên hệ thống."
-        action={(
-          <Button variant="secondary" onClick={() => void load()} disabled={loading || featureLoading}>
-            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
-            Làm mới
-          </Button>
-        )}
-      />
+    <section className="overflow-hidden rounded-[26px] border border-white/70 bg-white/80 shadow-xl shadow-slate-200/50 backdrop-blur-xl">
+      <div className="border-b border-slate-100 p-5 md:p-6">
+        <div className="mb-4 flex items-center gap-3"><div className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-blue-600 via-violet-600 to-fuchsia-600 text-white"><Filter className="h-4 w-4" /></div><div><h2 className="font-black text-slate-950">Bộ lọc lịch sử</h2><p className="mt-0.5 text-xs text-slate-500">Lọc theo loại phiếu và khoảng thời gian tối đa 1 năm.</p></div></div>
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_auto] xl:items-end"><Select label="Loại phiếu" value={type} onChange={(e) => setType(e.target.value as 'all' | DocumentType)} options={typeOptions} /><label className="grid gap-1.5 text-sm font-semibold text-slate-700"><span className="flex items-center gap-2"><CalendarDays className="h-4 w-4" />Từ ngày</span><input type="date" className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm" value={fromInput} onChange={(e) => setFromInput(e.target.value)} /></label><label className="grid gap-1.5 text-sm font-semibold text-slate-700"><span className="flex items-center gap-2"><CalendarDays className="h-4 w-4" />Đến ngày</span><input type="date" className="h-11 rounded-xl border border-slate-200 bg-white px-3 text-sm" value={toInput} onChange={(e) => setToInput(e.target.value)} /></label><div className="flex gap-2"><button type="button" onClick={applyFilters} className="inline-flex h-11 items-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 via-violet-600 to-fuchsia-600 px-4 text-sm font-bold text-white"><Filter className="h-4 w-4" />Áp dụng</button><button type="button" onClick={clearFilters} className="h-11 rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-600">Xóa lọc</button></div></div>
+        {filterError && <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">{filterError}</div>}
+        <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-violet-100 bg-violet-50/70 p-4"><div><div className="font-black text-slate-900">Xuất Excel hàng loạt</div><div className="mt-1 text-xs text-slate-500">Đã chọn {selectedIds.length} phiếu · Excel đã có cột quyết toán và lời/lỗ.</div></div><div className="flex flex-wrap gap-2"><button type="button" onClick={() => void exportDocuments(selectedIds)} disabled={bulkExporting || selectedIds.length === 0 || loading} className="inline-flex h-10 items-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-blue-600 px-4 text-sm font-bold text-white disabled:opacity-50">{bulkExporting ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}Xuất phiếu đã chọn</button><button type="button" onClick={() => void exportAllMatchingDocuments()} disabled={bulkExporting || loading || total === 0} className="inline-flex h-10 items-center gap-2 rounded-xl border border-violet-200 bg-white px-4 text-sm font-bold text-violet-700 disabled:opacity-50"><Layers3 className="h-4 w-4" />Xuất tất cả phiếu ({total})</button></div></div>
+      </div>
 
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <div className="group relative overflow-hidden rounded-[22px] border border-violet-100 bg-white/80 p-4 shadow-sm backdrop-blur-xl transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-violet-100/70">
-          <div className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full bg-violet-400/10 blur-2xl transition-transform duration-500 group-hover:scale-150" />
-          <div className="relative flex items-center gap-3">
-            <div className="grid h-11 w-11 place-items-center rounded-2xl bg-gradient-to-br from-blue-600 via-violet-600 to-fuchsia-600 text-white shadow-lg shadow-violet-500/20">
-              <ClipboardList className="h-5 w-5" />
-            </div>
-            <div>
-              <div className="text-xs font-bold uppercase tracking-[0.12em] text-slate-400">Tổng phiếu</div>
-              <div className="mt-0.5 text-2xl font-black text-slate-950">{total}</div>
-            </div>
-          </div>
-        </div>
+      <div className="overflow-x-auto"><table className="w-full min-w-[1180px] border-collapse text-left text-sm"><thead><tr className="border-b border-slate-200 bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500"><th className="px-5 py-4"><div className="flex items-center gap-2"><input type="checkbox" checked={rows.length > 0 && rows.every((row) => selectedIds.includes(row.id))} onChange={(e) => toggleCurrentPageSelection(e.target.checked)} />STT</div></th><th className="px-5 py-4">Ngày</th><th className="px-5 py-4">Loại phiếu</th><th className="px-5 py-4">Số đơn</th><th className="px-5 py-4">Số dòng</th><th className="px-5 py-4 text-right">Tổng SL</th><th className="px-5 py-4 text-right">Tổng quyết toán</th><th className="px-5 py-4 text-right">Lời / Lỗ</th><th className="px-5 py-4 text-right">Thao tác</th></tr></thead><tbody>
+        {loading || featureLoading ? <tr><td colSpan={9} className="py-20 text-center"><RefreshCw className="mx-auto h-6 w-6 animate-spin text-violet-500" /><div className="mt-2 text-sm font-semibold text-slate-500">Đang tải lịch sử…</div></td></tr> : error ? <tr><td colSpan={9} className="py-16 text-center"><div className="mx-auto max-w-md rounded-2xl border border-rose-200 bg-rose-50 px-4 py-4 text-sm text-rose-700">{error}</div></td></tr> : rows.length === 0 ? <tr><td colSpan={9} className="py-20 text-center"><SearchX className="mx-auto h-7 w-7 text-slate-400" /><div className="mt-3 font-black text-slate-800">Chưa có phiếu phù hợp</div></td></tr> : rows.map((row, index) => <Fragment key={row.id}>
+          <tr className={`border-b border-slate-100 hover:bg-violet-50/30 ${expandedId === row.id ? 'bg-violet-50/40' : ''}`}>
+            <td className="px-5 py-4"><div className="flex items-center gap-2"><input type="checkbox" checked={selectedIds.includes(row.id)} onChange={() => toggleSelected(row.id)} /><span className="font-black text-slate-500">{page * PAGE_SIZE + index + 1}</span></div></td>
+            <td className="whitespace-nowrap px-5 py-4 font-bold text-slate-800">{formatDateVN(row.documentDate)}</td>
+            <td className="px-5 py-4"><span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-bold ${row.type === 'outbound' ? 'border-blue-100 bg-blue-50 text-blue-700' : 'border-amber-100 bg-amber-50 text-amber-700'}`}>{row.type === 'outbound' ? <PackageCheck className="h-3.5 w-3.5" /> : <RotateCcw className="h-3.5 w-3.5" />}{row.type === 'outbound' ? 'Phiếu xuất hàng' : 'Phiếu hoàn hàng'}</span></td>
+            <td className="px-5 py-4 font-black">{row.orderCount}</td><td className="px-5 py-4 font-semibold text-slate-500">{row.itemCount}</td><td className="px-5 py-4 text-right font-black">{row.totalQuantity}</td>
+            <td className="px-5 py-4 text-right font-black text-emerald-700">{formatVND(row.totalSettlement)}</td>
+            <td className={`px-5 py-4 text-right font-black ${row.totalProfitLoss == null ? 'text-slate-500' : row.totalProfitLoss >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>{row.totalProfitLoss == null ? '—' : `${row.totalProfitLoss >= 0 ? '+' : ''}${formatVND(row.totalProfitLoss)}`}</td>
+            <td className="px-5 py-4"><div className="flex justify-end gap-2"><Button variant="secondary" className="h-9 px-3" onClick={() => void toggleQuickView(row.id)} disabled={detailLoadingId !== null && detailLoadingId !== row.id}>{detailLoadingId === row.id ? <RefreshCw className="h-4 w-4 animate-spin" /> : <ChevronDown className={`h-4 w-4 ${expandedId === row.id ? 'rotate-180' : ''}`} />}<span className="hidden lg:inline">{expandedId === row.id ? 'Thu gọn' : 'Xem chi tiết'}</span></Button><Button variant="secondary" className="h-9 px-3" onClick={() => navigate(`/warehouse/history/${platform}/${row.id}/edit?type=${row.type}`)}><Edit3 className="h-4 w-4" /><span className="hidden lg:inline">Sửa</span></Button><Button variant="secondary" className="h-9 px-3" loading={exportingId === row.id} disabled={exportingId !== null} onClick={() => void exportSavedDocument(row.id)}><Download className="h-4 w-4" /><span className="hidden lg:inline">Excel</span></Button><Button variant="secondary" className="h-9 border-rose-200 px-3 text-rose-600" loading={deletingId === row.id} disabled={deletingId !== null} onClick={() => setPendingDelete(row)}><Trash2 className="h-4 w-4" /><span className="hidden lg:inline">Xóa phiếu</span></Button></div></td>
+          </tr>
+          {expandedId === row.id && <tr className="border-b border-violet-100 bg-gradient-to-r from-violet-50/70 via-white to-blue-50/50"><td colSpan={9} className="px-5 py-5">{detailLoadingId === row.id && !detailById[row.id] ? <div className="flex justify-center gap-2 py-5 text-sm font-semibold text-slate-500"><RefreshCw className="h-4 w-4 animate-spin" />Đang tải chi tiết…</div> : detailById[row.id] ? <div className="space-y-5">{groupDocumentItems(detailById[row.id]).map((group, groupIndex) => { const settlements = calculateProductSettlements(group.items, group.items[0]?.orderSettlementAmount ?? null); const totalSettlement = group.items[0]?.orderSettlementAmount ?? null; const totalMinimum = group.items.reduce((sum, item) => sum + (item.minimumSettlement ?? 0) * item.quantity, 0); const totalProfitLoss = settlements.every((item) => item.profitLoss != null) ? settlements.reduce((sum, item) => sum + (item.profitLoss ?? 0), 0) : null; return <section key={`${row.id}-${groupIndex}`} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"><div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-100 bg-slate-50/80 px-4 py-3"><div><div className="font-black text-slate-900">Đơn {groupIndex + 1}: {group.orderCode || '—'}</div><div className="mt-1 text-xs text-slate-500">{group.items.length} dòng sản phẩm</div></div><div className="flex flex-wrap gap-2 text-xs"><span className="rounded-full bg-violet-50 px-3 py-1.5 font-bold text-violet-700">Tổng quyết toán: {formatVND(totalSettlement)}</span><span className={`rounded-full px-3 py-1.5 font-bold ${totalProfitLoss == null ? 'bg-slate-100 text-slate-600' : totalProfitLoss >= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'}`}>Lời/Lỗ: {totalProfitLoss == null ? '—' : `${totalProfitLoss >= 0 ? '+' : ''}${formatVND(totalProfitLoss)}`}</span></div></div><div className="overflow-x-auto"><table className="w-full min-w-[1100px] text-left text-sm"><thead className="bg-white text-[11px] uppercase tracking-wide text-slate-500"><tr><th className="px-4 py-3">Sản phẩm</th><th className="px-4 py-3">SKU</th><th className="px-4 py-3 text-right">SL</th><th className="px-4 py-3 text-right">Đơn giá sàn</th><th className="px-4 py-3 text-right">Mức tối thiểu</th><th className="px-4 py-3 text-right">Quyết toán SP</th><th className="px-4 py-3 text-right">Lời / Lỗ</th></tr></thead><tbody>{group.items.map((item, itemIndex) => { const result = settlements[itemIndex]; return <tr key={`${group.orderCode}-${itemIndex}`} className="border-t border-slate-100"><td className="px-4 py-3 font-semibold text-slate-700">{item.productName || '—'}<div className="text-xs font-normal text-slate-400">{item.variant || item.unit || '—'}</div></td><td className="px-4 py-3 text-slate-600">{item.sku || '—'}</td><td className="px-4 py-3 text-right font-black">{item.quantity}</td><td className="px-4 py-3 text-right text-slate-600">{item.salePrice == null ? '—' : formatVND(item.salePrice)}</td><td className="px-4 py-3 text-right text-slate-600">{result.minimumAmount == null ? '—' : formatVND(result.minimumAmount)}</td><td className="px-4 py-3 text-right font-black text-emerald-700">{formatVND(result.settlementAmount)}</td><td className={`px-4 py-3 text-right font-black ${result.profitLoss == null ? 'text-slate-500' : result.profitLoss >= 0 ? 'text-emerald-700' : 'text-rose-700'}`}>{result.profitLoss == null ? '—' : `${result.profitLoss >= 0 ? '+' : ''}${formatVND(result.profitLoss)}`}</td></tr>; })}</tbody></table></div><div className="grid gap-3 border-t border-slate-100 bg-slate-50/60 p-4 sm:grid-cols-3"><div><div className="text-xs font-semibold text-slate-500">Tổng quyết toán</div><div className="mt-1 font-black">{formatVND(totalSettlement)}</div></div><div><div className="text-xs font-semibold text-slate-500">Tổng mức tối thiểu</div><div className="mt-1 font-black">{formatVND(totalMinimum)}</div></div><div><div className="text-xs font-semibold text-slate-500">Đối chiếu</div><div className={`mt-1 font-black ${totalSettlement == null ? 'text-slate-500' : totalSettlement >= totalMinimum ? 'text-emerald-700' : 'text-rose-700'}`}>{totalSettlement == null ? 'Chưa có dữ liệu' : totalSettlement >= totalMinimum ? `Đạt · dư ${formatVND(totalSettlement - totalMinimum)}` : `Thiếu ${formatVND(totalMinimum - totalSettlement)}`}</div></div></div></section>; })}</div> : null}</td></tr>}
+        </Fragment>)}
+      </tbody></table></div>
+      <div className="flex flex-col gap-3 border-t border-slate-100 bg-slate-50/60 p-4 sm:flex-row sm:items-center sm:justify-between"><div className="text-xs font-semibold text-slate-500">{total === 0 ? 0 : page * PAGE_SIZE + 1}-{Math.min((page + 1) * PAGE_SIZE, total)} / {total}</div><div className="flex items-center gap-2"><Button variant="secondary" className="h-9 px-3" disabled={page === 0 || loading} onClick={() => setPage((current) => Math.max(0, current - 1))}><ChevronLeft className="h-4 w-4" />Trước</Button><div className="rounded-xl border border-violet-100 bg-violet-50 px-3 py-2 text-xs font-black text-violet-700">Trang {Math.min(page + 1, totalPages)} / {totalPages}</div><Button variant="secondary" className="h-9 px-3" disabled={page >= totalPages - 1 || loading} onClick={() => setPage((current) => current + 1)}>Sau<ChevronRight className="h-4 w-4" /></Button></div></div>
+    </section>
 
-        <div className={`group relative overflow-hidden rounded-[22px] border bg-white/80 p-4 shadow-sm backdrop-blur-xl transition-all duration-300 hover:-translate-y-1 hover:shadow-xl ${isShopee ? 'border-orange-100 hover:shadow-orange-100/70' : 'border-cyan-100 hover:shadow-cyan-100/70'}`}>
-          <div className={`pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full blur-2xl transition-transform duration-500 group-hover:scale-150 ${isShopee ? 'bg-orange-400/10' : 'bg-cyan-400/10'}`} />
-          <div className="relative flex items-center gap-3">
-            <div className="grid h-11 w-11 place-items-center overflow-hidden rounded-2xl shadow-lg">
-              <img src={isShopee ? '/shopee-logo.svg' : '/tiktok-logo.svg'} alt={isShopee ? 'Shopee' : 'TikTok Shop'} className="h-full w-full object-cover" />
-            </div>
-            <div>
-              <div className="text-xs font-bold uppercase tracking-[0.12em] text-slate-400">Trang hiện tại</div>
-              <div className="mt-0.5 text-2xl font-black text-slate-950">{rows.length} <span className="text-sm font-bold text-slate-400">phiếu</span></div>
-            </div>
-          </div>
-        </div>
-
-        <div className="group relative overflow-hidden rounded-[22px] border border-blue-100 bg-white/80 p-4 shadow-sm backdrop-blur-xl transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-blue-100/70">
-          <div className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full bg-blue-400/10 blur-2xl transition-transform duration-500 group-hover:scale-150" />
-          <div className="relative flex items-center gap-3">
-            <div className="grid h-11 w-11 place-items-center rounded-2xl bg-blue-50 text-blue-600">
-              <Layers3 className="h-5 w-5" />
-            </div>
-            <div>
-              <div className="text-xs font-bold uppercase tracking-[0.12em] text-slate-400">Số đơn trên trang</div>
-              <div className="mt-0.5 text-2xl font-black text-slate-950">{pageStats.orders}</div>
-            </div>
-          </div>
-        </div>
-
-        <div className="group relative overflow-hidden rounded-[22px] border border-emerald-100 bg-white/80 p-4 shadow-sm backdrop-blur-xl transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-emerald-100/70">
-          <div className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full bg-emerald-400/10 blur-2xl transition-transform duration-500 group-hover:scale-150" />
-          <div className="relative flex items-center gap-3">
-            <div className="grid h-11 w-11 place-items-center rounded-2xl bg-emerald-50 text-emerald-600">
-              <PackageCheck className="h-5 w-5" />
-            </div>
-            <div>
-              <div className="text-xs font-bold uppercase tracking-[0.12em] text-slate-400">Tổng SL trên trang</div>
-              <div className="mt-0.5 text-2xl font-black text-slate-950">{pageStats.quantity}</div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <section className="relative overflow-hidden rounded-[26px] border border-white/70 bg-white/80 shadow-xl shadow-slate-200/50 backdrop-blur-xl">
-        <div className="pointer-events-none absolute inset-0 overflow-hidden">
-          <div className={`absolute -right-20 -top-24 h-64 w-64 rounded-full blur-3xl ${isShopee ? 'bg-orange-300/10' : 'bg-cyan-300/10'}`} />
-          <div className="absolute -left-24 top-1/3 h-64 w-64 rounded-full bg-violet-300/10 blur-3xl" />
-        </div>
-
-        <div className="relative border-b border-slate-100/90 p-5 md:p-6">
-          <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-center gap-3">
-              <div className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-blue-600 via-violet-600 to-fuchsia-600 text-white shadow-lg shadow-violet-500/20">
-                <Filter className="h-4 w-4" />
-              </div>
-              <div>
-                <h2 className="font-black text-slate-950">Bộ lọc lịch sử</h2>
-                <p className="mt-0.5 text-xs text-slate-500">Lọc theo loại phiếu và khoảng thời gian tối đa 1 năm.</p>
-              </div>
-            </div>
-
-            {hasActiveFilters && (
-              <div className="inline-flex w-fit items-center gap-2 rounded-full border border-violet-100 bg-violet-50 px-3 py-1.5 text-xs font-bold text-violet-700">
-                <span className="relative flex h-2 w-2">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-violet-400 opacity-60" />
-                  <span className="relative inline-flex h-2 w-2 rounded-full bg-violet-500" />
-                </span>
-                Đang áp dụng bộ lọc
-              </div>
-            )}
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_auto] xl:items-end">
-            <Select
-              label="Loại phiếu"
-              value={type}
-              onChange={(e) => setType(e.target.value as 'all' | DocumentType)}
-              options={typeOptions}
-            />
-
-            <label className="group grid gap-1.5 text-sm font-semibold text-slate-700">
-              <span className="flex items-center gap-2 transition-colors group-focus-within:text-violet-700">
-                <CalendarDays className="h-4 w-4" />
-                Từ ngày
-              </span>
-              <input
-                type="date"
-                className="h-11 cursor-pointer rounded-xl border border-slate-200 bg-white/90 px-3 text-sm outline-none transition-all duration-200 hover:border-slate-300 focus:-translate-y-[1px] focus:border-violet-400 focus:bg-white focus:shadow-lg focus:shadow-violet-100/70 focus:ring-4 focus:ring-violet-100/70"
-                value={fromInput}
-                onChange={(e) => setFromInput(e.target.value)}
-              />
-            </label>
-
-            <label className="group grid gap-1.5 text-sm font-semibold text-slate-700">
-              <span className="flex items-center gap-2 transition-colors group-focus-within:text-violet-700">
-                <CalendarDays className="h-4 w-4" />
-                Đến ngày
-              </span>
-              <input
-                type="date"
-                className="h-11 cursor-pointer rounded-xl border border-slate-200 bg-white/90 px-3 text-sm outline-none transition-all duration-200 hover:border-slate-300 focus:-translate-y-[1px] focus:border-violet-400 focus:bg-white focus:shadow-lg focus:shadow-violet-100/70 focus:ring-4 focus:ring-violet-100/70"
-                value={toInput}
-                onChange={(e) => setToInput(e.target.value)}
-              />
-            </label>
-
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={applyFilters}
-                className="group relative inline-flex h-11 cursor-pointer items-center justify-center gap-2 overflow-hidden rounded-xl bg-gradient-to-r from-blue-600 via-violet-600 to-fuchsia-600 px-4 text-sm font-bold text-white shadow-lg shadow-violet-500/20 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-xl active:scale-[0.98]"
-              >
-                <span className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/25 to-transparent transition-transform duration-700 group-hover:translate-x-full" />
-                <Filter className="relative h-4 w-4" />
-                <span className="relative">Áp dụng</span>
-              </button>
-              <button
-                type="button"
-                onClick={clearFilters}
-                className="h-11 cursor-pointer rounded-xl border border-slate-200 bg-white px-4 text-sm font-bold text-slate-600 transition-all duration-300 hover:-translate-y-0.5 hover:border-violet-200 hover:bg-violet-50 hover:text-violet-700 active:scale-[0.98]"
-              >
-                Xóa lọc
-              </button>
-            </div>
-          </div>
-
-          {filterError && (
-            <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50/90 px-4 py-3 text-sm font-medium text-rose-700 shadow-sm">
-              {filterError}
-            </div>
-          )}
-          <div className="mt-5 flex flex-col gap-3 rounded-2xl border border-violet-100 bg-gradient-to-r from-violet-50/80 via-white to-blue-50/80 p-4 sm:flex-row sm:items-center sm:justify-between">
-            <div className="text-sm">
-              <div className="font-black text-slate-900">Xuất Excel hàng loạt</div>
-              <div className="mt-1 text-xs text-slate-500">
-                Đã chọn {selectedIds.length} phiếu · Các phiếu được gom vào một file và phân cụm theo ngày
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => void exportDocuments(selectedIds)}
-                disabled={bulkExporting || selectedIds.length === 0 || loading}
-                className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-violet-600 to-blue-600 px-4 text-sm font-bold text-white shadow-md transition-all hover:-translate-y-0.5 hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {bulkExporting ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
-                Xuất phiếu đã chọn
-              </button>
-              <button
-                type="button"
-                onClick={() => void exportAllMatchingDocuments()}
-                disabled={bulkExporting || loading || total === 0}
-                className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-xl border border-violet-200 bg-white px-4 text-sm font-bold text-violet-700 transition-all hover:-translate-y-0.5 hover:bg-violet-50 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {bulkExporting ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Layers3 className="h-4 w-4" />}
-                Xuất tất cả phiếu ({total})
-              </button>
-              {selectedIds.length > 0 && (
-                <button type="button" onClick={() => setSelectedIds([])} disabled={bulkExporting} className="h-10 cursor-pointer rounded-xl px-3 text-sm font-bold text-slate-500 hover:bg-white disabled:cursor-not-allowed">
-                  Bỏ chọn
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-
-        <div className="relative overflow-x-auto">
-          <table className="w-full min-w-[980px] border-collapse text-left text-sm">
-            <thead>
-              <tr className="border-b border-slate-200/80 bg-gradient-to-r from-slate-50 via-violet-50/50 to-slate-50 text-[11px] uppercase tracking-[0.08em] text-slate-500">
-                <th className="px-5 py-4 font-black">
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="checkbox"
-                      aria-label="Chọn tất cả phiếu trên trang này"
-                      className="h-4 w-4 cursor-pointer accent-violet-600"
-                      checked={rows.length > 0 && rows.every((row) => selectedIds.includes(row.id))}
-                      onChange={(event) => toggleCurrentPageSelection(event.target.checked)}
-                    />
-                    STT
-                  </div>
-                </th>
-                <th className="px-5 py-4 font-black">Ngày</th>
-                <th className="px-5 py-4 font-black">Loại phiếu</th>
-                <th className="px-5 py-4 font-black">Số đơn</th>
-                <th className="px-5 py-4 font-black">Số dòng</th>
-                <th className="px-5 py-4 text-right font-black">Tổng SL</th>
-                <th className="px-5 py-4 text-right font-black">Thao tác</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(loading || featureLoading) && (
-                <tr>
-                  <td colSpan={7} className="px-5 py-20 text-center">
-                    <div className="mx-auto flex w-fit flex-col items-center gap-3 text-slate-500">
-                      <RefreshCw className="h-6 w-6 animate-spin text-violet-500" />
-                      <span className="text-sm font-semibold">Đang tải lịch sử…</span>
-                    </div>
-                  </td>
-                </tr>
-              )}
-
-              {!loading && !featureLoading && error && (
-                <tr>
-                  <td colSpan={7} className="px-5 py-16 text-center">
-                    <div className="mx-auto max-w-md rounded-2xl border border-rose-200 bg-rose-50 px-4 py-4 text-sm font-medium text-rose-700">
-                      {error}
-                    </div>
-                  </td>
-                </tr>
-              )}
-
-              {!loading && !featureLoading && !error && rows.length === 0 && (
-                <tr>
-                  <td colSpan={7} className="px-5 py-20 text-center">
-                    <div className="mx-auto flex max-w-sm flex-col items-center">
-                      <div className="grid h-14 w-14 place-items-center rounded-2xl bg-slate-100 text-slate-400 shadow-inner">
-                        <SearchX className="h-6 w-6" />
-                      </div>
-                      <div className="mt-4 font-black text-slate-800">Chưa có phiếu phù hợp</div>
-                      <div className="mt-1 text-xs leading-5 text-slate-500">Thử thay đổi bộ lọc hoặc tạo một phiếu mới cho nền tảng này.</div>
-                    </div>
-                  </td>
-                </tr>
-              )}
-
-              {!loading && !featureLoading && !error && rows.map((row, index) => (
-                <Fragment key={row.id}>
-                  <tr key={row.id} className={`group border-b border-slate-100/90 transition-all duration-200 hover:bg-violet-50/35 ${expandedId === row.id ? 'bg-violet-50/40' : ''}`}>
-                    <td className="px-5 py-4">
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          aria-label={`Chọn phiếu ngày ${formatDateVN(row.documentDate)}`}
-                          className="h-4 w-4 cursor-pointer accent-violet-600"
-                          checked={selectedIds.includes(row.id)}
-                          onChange={() => toggleSelected(row.id)}
-                        />
-                        <span className="inline-grid h-7 min-w-7 place-items-center rounded-lg bg-slate-100 px-2 text-xs font-black text-slate-500 transition-colors group-hover:bg-violet-100 group-hover:text-violet-700">
-                          {page * PAGE_SIZE + index + 1}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="whitespace-nowrap px-5 py-4 font-bold text-slate-800">{formatDateVN(row.documentDate)}</td>
-                    <td className="px-5 py-4">
-                      <span className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-bold ${row.type === 'outbound' ? 'border-blue-100 bg-blue-50 text-blue-700' : 'border-amber-100 bg-amber-50 text-amber-700'}`}>
-                        {row.type === 'outbound' ? <PackageCheck className="h-3.5 w-3.5" /> : <RotateCcw className="h-3.5 w-3.5" />}
-                        {row.type === 'outbound' ? 'Phiếu xuất hàng' : 'Phiếu hoàn hàng'}
-                      </span>
-                    </td>
-                    <td className="px-5 py-4 font-black text-slate-800">{row.orderCount}</td>
-                    <td className="px-5 py-4 font-semibold text-slate-500">{row.itemCount}</td>
-                    <td className="px-5 py-4 text-right text-base font-black text-slate-950">{row.totalQuantity}</td>
-                    <td className="px-5 py-4">
-                      <div className="flex justify-end gap-2">
-                        <Button
-                          variant="secondary"
-                          className={`h-9 px-3 transition-all duration-300 hover:-translate-y-0.5 hover:border-violet-200 hover:text-violet-700 ${expandedId === row.id ? 'border-violet-200 bg-violet-50 text-violet-700' : ''}`}
-                          title={expandedId === row.id ? 'Thu gọn chi tiết' : 'Xem nhanh đơn hàng trong phiếu'}
-                          onClick={() => void toggleQuickView(row.id)}
-                          disabled={detailLoadingId !== null && detailLoadingId !== row.id}
-                        >
-                          {detailLoadingId === row.id ? <RefreshCw className="h-4 w-4 animate-spin" /> : <ChevronDown className={`h-4 w-4 transition-transform ${expandedId === row.id ? 'rotate-180' : ''}`} />}
-                          <span className="hidden lg:inline">{expandedId === row.id ? 'Thu gọn' : 'Xem nhanh'}</span>
-                        </Button>
-                        <Button
-                          variant="secondary"
-                          className="h-9 px-3 transition-all duration-300 hover:-translate-y-0.5 hover:border-violet-200 hover:text-violet-700"
-                          title="Chỉnh sửa phiếu"
-                          onClick={() => navigate(`/warehouse/history/${platform}/${row.id}/edit?type=${row.type}`)}
-                        >
-                          <Edit3 className="h-4 w-4" />
-                          <span className="hidden lg:inline">Sửa</span>
-                        </Button>
-                        <Button
-                          variant="secondary"
-                          className="h-9 px-3 transition-all duration-300 hover:-translate-y-0.5 hover:border-emerald-200 hover:text-emerald-700"
-                          title="Xuất lại file Excel"
-                          loading={exportingId === row.id}
-                          disabled={exportingId !== null || loading}
-                          onClick={() => void exportSavedDocument(row.id)}
-                        >
-                          <Download className="h-4 w-4" />
-                          <span className="hidden lg:inline">Xuất Excel</span>
-                        </Button>
-                        <Button
-                          variant="secondary"
-                          className="h-9 px-3 border-rose-200 text-rose-600 transition-all duration-300 hover:-translate-y-0.5 hover:border-rose-300 hover:bg-rose-50 hover:text-rose-700"
-                          title="Xóa phiếu sai hoặc không còn sử dụng"
-                          loading={deletingId === row.id}
-                          disabled={deletingId !== null || exportingId !== null || loading}
-                          onClick={() => { setSuccessMessage(''); setPendingDelete(row); }}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                          <span className="hidden lg:inline">Xóa phiếu</span>
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                  {expandedId === row.id && (
-                    <tr key={`${row.id}-quick-view`} className="border-b border-violet-100 bg-gradient-to-r from-violet-50/70 via-white to-blue-50/50">
-                      <td colSpan={7} className="px-5 py-5">
-                        {detailLoadingId === row.id && !detailById[row.id] ? (
-                          <div className="flex items-center justify-center gap-2 py-5 text-sm font-semibold text-slate-500">
-                            <RefreshCw className="h-4 w-4 animate-spin text-violet-500" />
-                            Đang tải danh sách đơn hàng…
-                          </div>
-                        ) : detailById[row.id] ? (
-                          <div className="space-y-3">
-                            <div className="flex flex-wrap items-center justify-between gap-2">
-                              <div>
-                                <h3 className="font-black text-slate-900">Chi tiết đơn hàng trong ngày {formatDateVN(row.documentDate)}</h3>
-                                <p className="mt-1 text-xs font-medium text-slate-500">
-                                  {new Set(detailById[row.id].items.map((item) => item.orderCode.trim()).filter(Boolean)).size} đơn hàng · {detailById[row.id].items.length} dòng sản phẩm · Tổng SL {detailById[row.id].items.reduce((sum, item) => sum + item.quantity, 0)}
-                                </p>
-                              </div>
-                              <span className={`rounded-full px-3 py-1.5 text-xs font-bold ${row.type === 'outbound' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'}`}>
-                                {row.type === 'outbound' ? 'Phiếu xuất hàng' : 'Phiếu hoàn hàng'}
-                              </span>
-                            </div>
-                            <div className="overflow-x-auto rounded-xl border border-slate-200 bg-white">
-                              <table className="w-full min-w-[760px] text-left text-sm">
-                                <thead className="bg-slate-50 text-[11px] uppercase tracking-wide text-slate-500">
-                                  <tr>
-                                    <th className="px-4 py-3 font-black">Mã đơn hàng</th>
-                                    <th className="px-4 py-3 font-black">Tên sản phẩm</th>
-                                    <th className="px-4 py-3 font-black">SKU phân loại</th>
-                                    <th className="px-4 py-3 font-black">Dung tích / Khối lượng</th>
-                                    <th className="px-4 py-3 font-black">Hương / Màu</th>
-                                    <th className="px-4 py-3 text-right font-black">Số lượng</th>
-                                  </tr>
-                                </thead>
-                                <tbody>
-                                  {Object.entries(
-                                    detailById[row.id].items.reduce<Record<string, { orderCode: string; items: HistoryDocument['items'] }>>((groups, item, itemIndex) => {
-                                      const orderCode = item.orderCode.trim();
-                                      const groupKey = orderCode || `__missing_order_${itemIndex}`;
-                                      if (!groups[groupKey]) groups[groupKey] = { orderCode, items: [] };
-                                      groups[groupKey].items.push(item);
-                                      return groups;
-                                    }, {}),
-                                  ).flatMap(([groupKey, group]) => group.items.map((item, itemIndex) => (
-                                    <tr key={`${row.id}-${groupKey}-item-${itemIndex}`} className="border-t border-slate-100 hover:bg-violet-50/40">
-                                      {itemIndex === 0 && (
-                                        <td rowSpan={group.items.length} className="whitespace-nowrap border-r border-slate-100 bg-slate-50/70 px-4 py-3 align-top font-black text-slate-800">
-                                          {group.orderCode || '—'}
-                                          {group.items.length > 1 && <span className="mt-1 block text-[11px] font-semibold text-slate-400">{group.items.length} dòng hàng</span>}
-                                        </td>
-                                      )}
-                                      <td className="px-4 py-3 font-semibold text-slate-700">{item.productName || '—'}</td>
-                                      <td className="px-4 py-3 text-slate-600">{item.sku || '—'}</td>
-                                      <td className="px-4 py-3 text-slate-600">{item.unit || '—'}</td>
-                                      <td className="px-4 py-3 text-slate-600">{item.variant || '—'}</td>
-                                      <td className="px-4 py-3 text-right font-black text-slate-900">{item.quantity}</td>
-                                    </tr>
-                                  )))}
-                                </tbody>
-                              </table>
-                            </div>
-                          </div>
-                        ) : null}
-                      </td>
-                    </tr>
-                  )}
-                </Fragment>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        <div className="relative flex flex-col gap-3 border-t border-slate-100 bg-slate-50/60 p-4 sm:flex-row sm:items-center sm:justify-between md:px-5">
-          <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-500">
-            <span>{rangeLabel}</span>
-            <span className="text-slate-300">•</span>
-            <span>Tối đa {PAGE_SIZE} phiếu/trang</span>
-            {pageStats.outbound > 0 && <span className="rounded-full bg-blue-50 px-2 py-1 text-blue-700">{pageStats.outbound} xuất</span>}
-            {pageStats.returns > 0 && <span className="rounded-full bg-amber-50 px-2 py-1 text-amber-700">{pageStats.returns} hoàn</span>}
-          </div>
-
-          <div className="flex items-center gap-2">
-            <Button
-              variant="secondary"
-              className="h-9 px-3"
-              disabled={page === 0 || loading}
-              onClick={() => setPage((current) => Math.max(0, current - 1))}
-            >
-              <ChevronLeft className="h-4 w-4" />
-              Trước
-            </Button>
-            <div className="rounded-xl border border-violet-100 bg-violet-50 px-3 py-2 text-xs font-black text-violet-700 shadow-sm">
-              Trang {Math.min(page + 1, totalPages)} / {totalPages}
-            </div>
-            <Button
-              variant="secondary"
-              className="h-9 px-3"
-              disabled={page >= totalPages - 1 || loading}
-              onClick={() => setPage((current) => current + 1)}
-            >
-              Sau
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-      </section>
-
-      {successMessage && (
-        <div role="status" className="fixed bottom-5 right-5 z-40 flex max-w-md items-start gap-3 rounded-2xl border border-emerald-200 bg-white px-4 py-3 text-sm font-semibold text-emerald-800 shadow-2xl shadow-emerald-900/10">
-          <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
-          <span className="flex-1">{successMessage}</span>
-          <button type="button" className="cursor-pointer rounded-lg p-1 text-emerald-700 hover:bg-emerald-50" onClick={() => setSuccessMessage('')} aria-label="Đóng thông báo">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-      )}
-
-      {createAction && (
-        <div className="flex justify-end">
-          <button
-            type="button"
-            onClick={() => navigate(createAction.path)}
-            className={`group relative inline-flex cursor-pointer items-center gap-2 overflow-hidden rounded-2xl px-5 py-3 text-sm font-black text-white shadow-lg transition-all duration-300 hover:-translate-y-1 hover:shadow-xl active:scale-[0.98] ${isShopee ? 'bg-gradient-to-r from-orange-500 to-rose-500 shadow-orange-500/20' : 'bg-gradient-to-r from-cyan-500 via-blue-600 to-violet-600 shadow-cyan-500/20'}`}
-          >
-            <span className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/25 to-transparent transition-transform duration-700 group-hover:translate-x-full" />
-            <createAction.icon className="relative h-4 w-4 transition-transform duration-300 group-hover:scale-110" />
-            <span className="relative">{createAction.label}</span>
-          </button>
-        </div>
-      )}
-
-      {pendingDelete && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget && deletingId === null) setPendingDelete(null);
-          }}
-        >
-          <section
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="delete-dialog-title"
-            className="w-full max-w-md overflow-hidden rounded-3xl border border-white/70 bg-white shadow-2xl shadow-slate-950/25"
-          >
-            <div className="flex items-start gap-4 border-b border-rose-100 bg-gradient-to-br from-rose-50 via-white to-orange-50 p-6">
-              <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-rose-100 text-rose-600">
-                <Trash2 className="h-6 w-6" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <h2 id="delete-dialog-title" className="text-lg font-black text-slate-950">Xác nhận xóa phiếu</h2>
-                <p className="mt-1 text-sm leading-6 text-slate-600">Bạn có chắc muốn xóa phiếu này khỏi lịch sử không?</p>
-              </div>
-              <button
-                type="button"
-                aria-label="Đóng hộp thoại"
-                disabled={deletingId !== null}
-                onClick={() => setPendingDelete(null)}
-                className="cursor-pointer rounded-xl p-2 text-slate-400 transition hover:bg-white hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <div className="space-y-4 p-6">
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                <div className="flex items-center justify-between gap-3">
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-500">Loại phiếu</span>
-                  <span className={`rounded-full px-3 py-1 text-xs font-bold ${pendingDelete.type === 'outbound' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'}`}>
-                    {pendingDelete.type === 'outbound' ? 'Phiếu xuất hàng' : 'Phiếu hoàn hàng'}
-                  </span>
-                </div>
-                <div className="mt-3 flex items-center justify-between gap-3 text-sm">
-                  <span className="text-slate-500">Nền tảng</span>
-                  <span className="font-bold text-slate-800">{pendingDelete.platform === 'shopee' ? 'Shopee' : 'TikTok Shop'}</span>
-                </div>
-                <div className="mt-2 flex items-center justify-between gap-3 text-sm">
-                  <span className="text-slate-500">Ngày tạo phiếu</span>
-                  <span className="font-bold text-slate-800">{formatDateVN(pendingDelete.documentDate)}</span>
-                </div>
-                <div className="mt-2 flex items-center justify-between gap-3 text-sm">
-                  <span className="text-slate-500">Số đơn / dòng hàng</span>
-                  <span className="font-bold text-slate-800">{pendingDelete.orderCount} đơn / {pendingDelete.itemCount} dòng</span>
-                </div>
-              </div>
-
-              <div className="flex gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-3.5 text-sm leading-5 text-rose-800">
-                <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-rose-600" />
-                <p>Phiếu, các dòng sản phẩm và thông tin quyết toán liên quan sẽ bị xóa vĩnh viễn. Thao tác này không thể hoàn tác.</p>
-              </div>
-
-              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-                <button
-                  type="button"
-                  disabled={deletingId !== null}
-                  onClick={() => setPendingDelete(null)}
-                  className="inline-flex h-11 cursor-pointer items-center justify-center rounded-xl border border-slate-200 bg-white px-5 text-sm font-bold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  Hủy
-                </button>
-                <button
-                  type="button"
-                  disabled={deletingId !== null}
-                  onClick={() => void confirmDeleteHistoryDocument()}
-                  className="inline-flex h-11 cursor-pointer items-center justify-center gap-2 rounded-xl bg-rose-600 px-5 text-sm font-bold text-white shadow-lg shadow-rose-600/20 transition hover:bg-rose-700 disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  {deletingId !== null ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                  {deletingId !== null ? 'Đang xóa…' : 'Xóa phiếu'}
-                </button>
-              </div>
-            </div>
-          </section>
-        </div>
-      )}
-    </div>
-  );
+    {successMessage && <div role="status" className="fixed bottom-5 right-5 z-40 flex max-w-md items-start gap-3 rounded-2xl border border-emerald-200 bg-white px-4 py-3 text-sm font-semibold text-emerald-800 shadow-2xl"><CheckCircle2 className="mt-0.5 h-5 w-5 text-emerald-600" /><span className="flex-1">{successMessage}</span><button type="button" className="rounded-lg p-1" onClick={() => setSuccessMessage('')}><X className="h-4 w-4" /></button></div>}
+    {pendingDelete && <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/55 p-4 backdrop-blur-sm"><section className="w-full max-w-md overflow-hidden rounded-3xl border border-white/70 bg-white shadow-2xl"><div className="border-b border-rose-100 bg-rose-50 p-6"><div className="flex items-start gap-4"><div className="grid h-12 w-12 place-items-center rounded-2xl bg-rose-100 text-rose-600"><Trash2 className="h-6 w-6" /></div><div><h2 className="text-lg font-black">Xác nhận xóa phiếu</h2><p className="mt-1 text-sm text-slate-600">Phiếu, sản phẩm và dữ liệu quyết toán liên quan sẽ bị xóa vĩnh viễn.</p></div></div></div><div className="space-y-4 p-6"><div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm"><div className="flex justify-between"><span>Loại phiếu</span><b>{pendingDelete.type === 'outbound' ? 'Phiếu xuất hàng' : 'Phiếu hoàn hàng'}</b></div><div className="mt-2 flex justify-between"><span>Nền tảng</span><b>{pendingDelete.platform === 'shopee' ? 'Shopee' : 'TikTok Shop'}</b></div><div className="mt-2 flex justify-between"><span>Ngày</span><b>{formatDateVN(pendingDelete.documentDate)}</b></div></div><div className="flex gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800"><AlertTriangle className="h-5 w-5 shrink-0" />Thao tác này không thể hoàn tác.</div><div className="flex justify-end gap-2"><button type="button" disabled={deletingId !== null} onClick={() => setPendingDelete(null)} className="h-11 rounded-xl border border-slate-200 bg-white px-5 text-sm font-bold">Hủy</button><button type="button" disabled={deletingId !== null} onClick={() => void confirmDelete()} className="inline-flex h-11 items-center gap-2 rounded-xl bg-rose-600 px-5 text-sm font-bold text-white">{deletingId !== null ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}Xóa phiếu</button></div></div></section></div>}
+  </div>;
 }
