@@ -10,12 +10,9 @@ interface Props {
   canRemove: boolean;
   showVariant?: boolean;
   hideOrderCode?: boolean;
-  showPricing?: boolean;
 }
 
-const moneyValue = (value: number | null) => value == null ? '' : String(value);
-
-export function ProductRow({ index, item, onChange, onRemove, canRemove, showVariant = true, hideOrderCode = false, showPricing = false }: Props) {
+export function ProductRow({ index, item, onChange, onRemove, canRemove, showVariant = true, hideOrderCode = false }: Props) {
   return (
     <div className="group relative overflow-hidden rounded-2xl border border-slate-200/90 bg-white p-4 shadow-sm transition-all duration-200 hover:border-violet-200 hover:shadow-md">
       <div className="mb-3 flex items-center justify-between gap-3">
@@ -45,17 +42,6 @@ export function ProductRow({ index, item, onChange, onRemove, canRemove, showVar
         <Input label="Số lượng" required type="number" min={1} step={1} value={item.quantity}
           onChange={(e) => onChange({ ...item, quantity: Number(e.target.value) })} />
       </div>
-
-      {showPricing && (
-        <div className="mt-4 grid gap-3 rounded-xl border border-violet-100 bg-violet-50/40 p-3 sm:grid-cols-2">
-          <Input label="Đơn giá trên sàn (₫ / sản phẩm)" type="number" min={0} step={1}
-            value={moneyValue(item.salePrice)} onChange={(e) => onChange({ ...item, salePrice: e.target.value === '' ? null : Number(e.target.value) })}
-            placeholder="Nhập đơn giá đang niêm yết" />
-          <Input label="Số tiền cần thu lại tối thiểu (₫)" type="number" min={0} step={1}
-            value={moneyValue(item.minimumSettlement)} onChange={(e) => onChange({ ...item, minimumSettlement: e.target.value === '' ? null : Number(e.target.value) })}
-            placeholder="VD: 100000" />
-        </div>
-      )}
     </div>
   );
 }
