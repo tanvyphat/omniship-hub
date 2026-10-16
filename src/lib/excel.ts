@@ -68,9 +68,10 @@ export async function exportDocumentExcel(input: DocumentInput) {
 
     sheet.columns = [
         {width: 6}, {width: 14}, {width: 24}, {width: 32}, {width: 30}, {width: 22}, {width: 18}, {width: 15},
+        {width: 20}, {width: 20},
     ];
 
-    const lastColumn = 'H';
+    const lastColumn = 'J';
     sheet.mergeCells(`A1:${lastColumn}1`);
     sheet.getCell('A1').value = input.type === 'outbound' ? 'PHIẾU XUẤT HÀNG' : 'PHIẾU HOÀN HÀNG';
     sheet.getCell('A1').font = {name: 'Times New Roman', size: 20, bold: true, color: {argb: 'FFFFFF'}};
@@ -81,11 +82,11 @@ export async function exportDocumentExcel(input: DocumentInput) {
     if (includeVariant) {
         sheet.mergeCells('A3:B3');
         sheet.getCell('A3').value = 'Nền tảng';
-        sheet.mergeCells('C3:H3');
+        sheet.mergeCells('C3:J3');
         sheet.getCell('C3').value = platformLabel(input.platform);
         sheet.mergeCells('A4:B4');
         sheet.getCell('A4').value = 'Ngày';
-        sheet.mergeCells('C4:H4');
+        sheet.mergeCells('C4:J4');
         sheet.getCell('C4').value = input.documentDate;
     } else {
         sheet.mergeCells('A3:B3');
@@ -115,7 +116,7 @@ export async function exportDocumentExcel(input: DocumentInput) {
         sheet.getCell(ref).fill = {type: 'pattern', pattern: 'solid', fgColor: {argb: lightBlue}};
     });
 
-    const headers = ['STT', 'Ngày', 'Mã đơn hàng', 'Tên sản phẩm', 'SKU', 'Dung tích / Khối lượng', 'Hương / Màu', 'Số lượng'];
+    const headers = ['STT', 'Ngày', 'Mã đơn hàng', 'Tên sản phẩm', 'SKU', 'Dung tích / Khối lượng', 'Hương / Màu', 'Số lượng', 'Đơn Giá', 'Quyết Toán'];
     const header = sheet.addRow(headers);
     header.eachCell({includeEmpty: true}, (cell) => {
         cell.font = {name: 'Times New Roman', bold: true, color: {argb: 'FFFFFF'}};
@@ -132,7 +133,7 @@ export async function exportDocumentExcel(input: DocumentInput) {
 
     sortedItems.forEach((item, index) => {
         const rowIndex = header.number + 1 + index;
-        const row = sheet.addRow([index + 1, input.documentDate, item.orderCode, item.productName, item.sku, item.unit, item.variant || '-', item.quantity]);
+        const row = sheet.addRow([index + 1, input.documentDate, item.orderCode, item.productName, item.sku, item.unit, item.variant || '-', item.quantity, '', '']);
 
         row.alignment = {vertical: 'middle', wrapText: true};
 
@@ -146,6 +147,8 @@ export async function exportDocumentExcel(input: DocumentInput) {
         row.getCell(2).alignment = {horizontal: 'center', vertical: 'middle'};
         row.getCell(3).alignment = {horizontal: 'center', vertical: 'middle', wrapText: true};
         row.getCell(8).alignment = {horizontal: 'center', vertical: 'middle'};
+        row.getCell(9).alignment = {horizontal: 'center', vertical: 'middle'};
+        row.getCell(10).alignment = {horizontal: 'center', vertical: 'middle'};
 
         addBorder(row);
 
@@ -335,7 +338,7 @@ export async function exportHistoryDocumentsExcel(inputs: DocumentInput[]) {
     sheet.columns = [
         {width: 7}, {width: 14}, {width: 18}, {width: 18},
         {width: 24}, {width: 34}, {width: 22}, {width: 24},
-        {width: 20}, {width: 12},
+        {width: 20}, {width: 12}, {width: 20}, {width: 20},
     ];
     sheet.views = [{state: 'frozen', ySplit: 0, showGridLines: false}];
 
@@ -361,7 +364,7 @@ export async function exportHistoryDocumentsExcel(inputs: DocumentInput[]) {
     for (const [date, documents] of dayGroups) {
         const dayHeader = sheet.getRow(globalRow);
         dayHeader.getCell(1).value = `NGÀY: ${formatBulkExportDate(date)}  ·  ${documents.length} PHIẾU`;
-        for (let column = 1; column <= 10; column += 1) {
+        for (let column = 1; column <= 12; column += 1) {
             const cell = dayHeader.getCell(column);
             cell.font = {name: 'Times New Roman', size: 15, bold: true, color: {argb: 'FFFFFF'}};
             cell.fill = {type: 'pattern', pattern: 'solid', fgColor: {argb: navy}};
@@ -374,7 +377,7 @@ export async function exportHistoryDocumentsExcel(inputs: DocumentInput[]) {
             ticketNumber += 1;
             const ticketHeader = sheet.getRow(globalRow);
             ticketHeader.getCell(1).value = `PHIẾU ${ticketNumber}  |  ${input.type === 'outbound' ? 'XUẤT HÀNG' : 'HOÀN HÀNG'}  |  ${platformLabel(input.platform)}  |  ${input.items.length} dòng sản phẩm`;
-            for (let column = 1; column <= 10; column += 1) {
+            for (let column = 1; column <= 12; column += 1) {
                 const cell = ticketHeader.getCell(column);
                 cell.font = {name: 'Times New Roman', bold: true, color: {argb: navy}};
                 cell.fill = {type: 'pattern', pattern: 'solid', fgColor: {argb: lightBlue}};
@@ -383,7 +386,7 @@ export async function exportHistoryDocumentsExcel(inputs: DocumentInput[]) {
             sheet.getRow(globalRow).height = 23;
             globalRow += 1;
 
-            const headers = ['STT', 'Ngày', 'Nền tảng', 'Loại phiếu', 'Mã đơn hàng', 'Tên sản phẩm', 'SKU', 'Dung tích / Khối lượng', 'Hương / Màu', 'Số lượng'];
+            const headers = ['STT', 'Ngày', 'Nền tảng', 'Loại phiếu', 'Mã đơn hàng', 'Tên sản phẩm', 'SKU', 'Dung tích / Khối lượng', 'Hương / Màu', 'Số lượng', 'Đơn Giá', 'Quyết Toán'];
             const header = sheet.getRow(globalRow);
             header.values = headers;
             header.eachCell({includeEmpty: true}, (cell) => {
@@ -405,7 +408,7 @@ export async function exportHistoryDocumentsExcel(inputs: DocumentInput[]) {
                 const values = [
                     index + 1, formatBulkExportDate(date), platformLabel(input.platform),
                     input.type === 'outbound' ? 'Xuất hàng' : 'Hoàn hàng',
-                    item.orderCode, item.productName, item.sku, item.unit, item.variant || '-', item.quantity,
+                    item.orderCode, item.productName, item.sku, item.unit, item.variant || '-', item.quantity, '', '',
                 ];
                 const row = sheet.getRow(globalRow);
                 row.values = values;
@@ -423,6 +426,8 @@ export async function exportHistoryDocumentsExcel(inputs: DocumentInput[]) {
                 row.getCell(1).alignment = {horizontal: 'center', vertical: 'middle'};
                 row.getCell(2).alignment = {horizontal: 'center', vertical: 'middle'};
                 row.getCell(10).alignment = {horizontal: 'center', vertical: 'middle'};
+                row.getCell(11).alignment = {horizontal: 'center', vertical: 'middle'};
+                row.getCell(12).alignment = {horizontal: 'center', vertical: 'middle'};
                 detailRows.push({
                     Ngày: formatBulkExportDate(date),
                     'Nền tảng': platformLabel(input.platform),
