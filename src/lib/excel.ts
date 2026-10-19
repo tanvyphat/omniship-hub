@@ -403,7 +403,12 @@ export async function exportHistoryDocumentsExcel(inputs: DocumentInput[]) {
             header.height = 30;
             globalRow += 1;
 
-            const items = [...input.items].sort((a, b) => (a.orderCode || '').localeCompare(b.orderCode || ''));
+            const items = [...input.items].sort((a, b) =>
+                (a.orderCode || '').trim().localeCompare((b.orderCode || '').trim()),
+            );
+            // Keep the start row so duplicate order codes can be merged after the
+            // product rows are written. Merging is limited to this ticket.
+            const firstItemRow = globalRow;
             items.forEach((item, index) => {
                 const values = [
                     index + 1, formatBulkExportDate(date), platformLabel(input.platform),
@@ -443,6 +448,31 @@ export async function exportHistoryDocumentsExcel(inputs: DocumentInput[]) {
                 totalQuantity += Number(item.quantity) || 0;
                 globalRow += 1;
             });
+
+            // Merge only adjacent rows with the same non-empty order code.
+            // Do not merge across tickets: each ticket has its own header and table.
+            let groupStartIndex = 0;
+            for (let index = 1; index <= items.length; index += 1) {
+                const previousCode = String(items[index - 1]?.orderCode ?? '').trim();
+                const currentCode = index < items.length
+                    ? String(items[index]?.orderCode ?? '').trim()
+                    : null;
+
+                if (index < items.length && currentCode === previousCode) continue;
+
+                const groupLength = index - groupStartIndex;
+                if (previousCode && groupLength > 1) {
+                    const mergeStartRow = firstItemRow + groupStartIndex;
+                    const mergeEndRow = firstItemRow + index - 1;
+                    sheet.mergeCells(mergeStartRow, 5, mergeEndRow, 5);
+                    sheet.getCell(mergeStartRow, 5).alignment = {
+                        horizontal: 'center',
+                        vertical: 'middle',
+                        wrapText: true,
+                    };
+                }
+                groupStartIndex = index;
+            }
 
             globalRow += 1;
         }
