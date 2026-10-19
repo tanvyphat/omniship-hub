@@ -430,6 +430,8 @@ export async function exportHistoryDocumentsExcel(inputs: DocumentInput[]) {
                 });
                 row.getCell(1).alignment = {horizontal: 'center', vertical: 'middle'};
                 row.getCell(2).alignment = {horizontal: 'center', vertical: 'middle'};
+                // Keep every order code left-aligned, whether or not it is merged.
+                row.getCell(5).alignment = {horizontal: 'left', vertical: 'middle', wrapText: true};
                 row.getCell(10).alignment = {horizontal: 'center', vertical: 'middle'};
                 row.getCell(11).alignment = {horizontal: 'center', vertical: 'middle'};
                 row.getCell(12).alignment = {horizontal: 'center', vertical: 'middle'};
@@ -466,7 +468,7 @@ export async function exportHistoryDocumentsExcel(inputs: DocumentInput[]) {
                     const mergeEndRow = firstItemRow + index - 1;
                     sheet.mergeCells(mergeStartRow, 5, mergeEndRow, 5);
                     sheet.getCell(mergeStartRow, 5).alignment = {
-                        horizontal: 'center',
+                        horizontal: 'left',
                         vertical: 'middle',
                         wrapText: true,
                     };
