@@ -102,8 +102,15 @@ export function CreateDocumentPage({ type: createType, edit = false }: Props) {
   const [importSummary, setImportSummary] = useState<ImportSummary | null>(null);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState('');
+  const [exportSuccessMessage, setExportSuccessMessage] = useState('');
   const importFileRef = useRef<HTMLInputElement>(null);
   const [showConfirmReset, setShowConfirmReset] = useState(false);
+
+  useEffect(() => {
+    if (!exportSuccessMessage) return;
+    const timeoutId = window.setTimeout(() => setExportSuccessMessage(''), 4000);
+    return () => window.clearTimeout(timeoutId);
+  }, [exportSuccessMessage]);
 
   useEffect(() => {
     if (!edit || !editId) return;
@@ -280,6 +287,7 @@ export function CreateDocumentPage({ type: createType, edit = false }: Props) {
 
   async function exportExcel() {
     setError('');
+    setExportSuccessMessage('');
     const validation = validateDocument(input);
     if (validation) {
       setError(validation);
@@ -288,6 +296,7 @@ export function CreateDocumentPage({ type: createType, edit = false }: Props) {
     setExporting(true);
     try {
       await exportDocumentExcel(input);
+      setExportSuccessMessage('Đã xuất file Excel thành công.');
     } catch {
       setError('Không thể xuất file Excel. Vui lòng thử lại.');
     } finally {
@@ -444,6 +453,13 @@ export function CreateDocumentPage({ type: createType, edit = false }: Props) {
           </div>
         </div>
       </section>
+
+      {exportSuccessMessage && (
+        <div role="status" aria-live="polite" className="fixed bottom-5 right-5 z-40 flex max-w-md items-start gap-3 rounded-2xl border border-emerald-200 bg-white px-4 py-3 text-sm font-semibold text-emerald-800 shadow-2xl shadow-emerald-900/10">
+          <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
+          <span className="flex-1">{exportSuccessMessage}</span>
+        </div>
+      )}
 
       {showConfirmReset && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/45 px-4 backdrop-blur-md">

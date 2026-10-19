@@ -129,6 +129,13 @@ export function HistoryPage() {
 
   useEffect(() => { void load(); }, [load]);
 
+  // Automatically dismiss success notifications after four seconds.
+  useEffect(() => {
+    if (!successMessage) return;
+    const timeoutId = window.setTimeout(() => setSuccessMessage(''), 4000);
+    return () => window.clearTimeout(timeoutId);
+  }, [successMessage]);
+
   function applyFilters() {
     const nextFrom = fromInput;
     const nextTo = toInput;
@@ -187,9 +194,11 @@ export function HistoryPage() {
   async function exportSavedDocument(id: string) {
     setExportingId(id);
     setError('');
+    setSuccessMessage('');
     try {
       const document = await fetchDocument(id);
       await exportDocumentExcel(document);
+      setSuccessMessage('Đã xuất file Excel của phiếu thành công.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Không thể xuất lại file Excel của phiếu.');
     } finally {
@@ -217,6 +226,7 @@ export function HistoryPage() {
     }
     setBulkExporting(true);
     setError('');
+    setSuccessMessage('');
     try {
       const documents: DocumentInput[] = [];
       for (let i = 0; i < ids.length; i += 10) {
